@@ -1,5 +1,6 @@
+import { CircleNotchIcon } from '@phosphor-icons/react'
 import type { ComponentProps } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigation, useResolvedPath } from 'react-router'
 import { cx } from './cx'
 
 type Variant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'link'
@@ -28,14 +29,54 @@ const sizes: Record<Size, string> = {
 
 type Common = { variant?: Variant; size?: Size }
 
+export function Spinner({ size = 16 }: { size?: number }) {
+  return <CircleNotchIcon aria-hidden size={size} weight="bold" className="shrink-0 animate-spin" />
+}
+
 export function buttonClass({ variant = 'primary', size = 'md' }: Common = {}, extra?: string) {
   return cx(base, variants[variant], variant === 'link' ? '' : sizes[size], extra)
 }
 
-export function Button({ variant, size, className, type = 'button', ...props }: ComponentProps<'button'> & Common) {
-  return <button type={type} className={buttonClass({ variant, size }, className)} {...props} />
+/** `loading` shows a spinner before the label and disables the button. */
+export function Button({
+  variant,
+  size,
+  className,
+  type = 'button',
+  loading = false,
+  disabled,
+  children,
+  ...props
+}: ComponentProps<'button'> & Common & { loading?: boolean }) {
+  return (
+    <button
+      type={type}
+      className={buttonClass({ variant, size }, className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading ? <Spinner /> : null}
+      {children}
+    </button>
+  )
 }
 
-export function ButtonLink({ variant, size, className, ...props }: ComponentProps<typeof Link> & Common) {
-  return <Link className={buttonClass({ variant, size }, className)} {...props} />
+/** Shows a spinner while the page it links to is loading. */
+export function ButtonLink({ variant, size, className, to, children, ...props }: ComponentProps<typeof Link> & Common) {
+  const navigation = useNavigation()
+  const target = useResolvedPath(to)
+  const loading = navigation.state === 'loading' && navigation.location.pathname === target.pathname
+  return (
+    <Link
+      to={to}
+      className={buttonClass({ variant, size }, className)}
+      aria-busy={loading || undefined}
+      aria-disabled={loading || undefined}
+      {...props}
+    >
+      {loading ? <Spinner /> : null}
+      {children}
+    </Link>
+  )
 }

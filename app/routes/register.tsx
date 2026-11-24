@@ -311,7 +311,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
           />
         ) : null}
 
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" loading={busy}>
           {busy ? 'Creating your account…' : verifying ? 'Verify and create account' : 'Create account'}
         </Button>
       </Form>

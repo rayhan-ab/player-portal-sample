@@ -7,7 +7,7 @@ import { Field } from '~/components/ui/Field'
 import { PasswordField } from '~/components/ui/PasswordField'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
 import { getRegistrationConfig, getSocialPlatforms } from '~/server/iam-config.server'
-import { commitSession, readSession, safeReturnTo, setCookieHeaders } from '~/server/session.server'
+import { commitSession, readSession, safeReturnTo, setCookieHeaders, type PendingSignIn } from '~/server/session.server'
 import type { Route } from './+types/login'
 
 export const meta: Route.MetaFunction = () => [{ title: 'Sign in · Player Portal' }]
@@ -26,29 +26,43 @@ const ERRORS: Record<string, string> = {
 /** Reuse an authorization request for this long before starting a new one. */
 const REQUEST_REUSE_MS = 5 * 60 * 1000
 
+/**
+ * Renders without calling IAM, so the page opens fast. The IAM authorization
+ * request the form posts against is made when the player submits (see action).
+ */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url)
   const returnTo = safeReturnTo(url.searchParams.get('returnTo'))
   if (getUser(context)) throw redirect(returnTo)
 
-  const session = readSession(request)
-  let pending = session?.pendingSignIn
+  let pending = readSession(request)?.pendingSignIn
   const requestIdFromIam = url.searchParams.get('request_id')
-
+  let headers: Headers | undefined
   if (requestIdFromIam && pending && !pending.requestId) {
     // Redirect flow: /auth/start sent the player to IAM, and IAM sent them here
     // with the request ID. Our state and PKCE verifier are already in the session.
     pending = { ...pending, requestId: requestIdFromIam }
-  } else if (!pending?.requestId || pending.createdAt + REQUEST_REUSE_MS < Date.now() || pending.mfa || pending.queue) {
-    pending = await beginSignIn(url.searchParams.has('returnTo') ? returnTo : (pending?.returnTo ?? '/'))
+    headers = setCookieHeaders(commitSession(request, { pendingSignIn: pending }))
   }
 
   const [{ usernameDisabled }, socialPlatforms] = await Promise.all([getRegistrationConfig(), getSocialPlatforms()])
   const errorKey = url.searchParams.get('error')
   return data(
-    { usernameDisabled, socialPlatforms, returnTo: pending.returnTo, error: errorKey ? (ERRORS[errorKey] ?? ERRORS.unknown) : null },
-    { headers: setCookieHeaders(commitSession(request, { pendingSignIn: pending })) }
+    {
+      usernameDisabled,
+      socialPlatforms,
+      returnTo: url.searchParams.has('returnTo') ? returnTo : (pending?.returnTo ?? '/'),
+      error: errorKey ? (ERRORS[errorKey] ?? ERRORS.unknown) : null
+    },
+    { headers }
   )
+}
+
+/** A pending sign-in the form can still post against, if there is one. */
+function usablePending(pending: PendingSignIn | undefined): (PendingSignIn & { requestId: string }) | null {
+  if (!pending?.requestId || pending.mfa || pending.queue) return null
+  if (pending.createdAt + REQUEST_REUSE_MS < Date.now()) return null
+  return { ...pending, requestId: pending.requestId }
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -59,12 +73,22 @@ export async function action({ request }: Route.ActionArgs) {
     return data({ error: 'Enter your email and password.', loginId }, { status: 400 })
   }
 
-  const pending = readSession(request)?.pendingSignIn
-  if (!pending) return data({ error: ERRORS.expired, loginId }, { status: 400 })
+  // Reuse the request IAM sent the player here with (redirect flow) or one
+  // from an earlier attempt; otherwise start one now.
+  const pending =
+    usablePending(readSession(request)?.pendingSignIn) ?? (await beginSignIn(safeReturnTo(String(form.get('returnTo') ?? '/'))))
 
   const result = await signInWithPassword(request, pending, loginId, password)
   if (result instanceof Response) return result
-  return data({ error: ERRORS[result.errorKey] ?? ERRORS.unknown, loginId }, { status: result.errorKey === 'credentials' ? 401 : 400 })
+  // Keep the request for a retry, unless IAM no longer knows it.
+  const keep = result.errorKey !== 'expired'
+  return data(
+    { error: ERRORS[result.errorKey] ?? ERRORS.unknown, loginId },
+    {
+      status: result.errorKey === 'credentials' ? 401 : 400,
+      headers: setCookieHeaders(commitSession(request, keep ? { pendingSignIn: pending } : {}))
+    }
+  )
 }
 
 export default function Login({ loaderData, actionData }: Route.ComponentProps) {
@@ -78,6 +102,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
       {error ? <Callout tone="error">{error}</Callout> : null}
       <SocialSignIn platforms={loaderData.socialPlatforms} returnTo={loaderData.returnTo} />
       <Form method="post" className="grid gap-5" noValidate>
+        <input type="hidden" name="returnTo" value={loaderData.returnTo} />
         <Field
           label={loginLabel}
           name="loginId"
@@ -88,7 +113,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
           autoFocus
         />
         <PasswordField label="Password" name="password" autoComplete="current-password" required />
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" loading={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>
       </Form>

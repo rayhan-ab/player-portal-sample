@@ -30,7 +30,7 @@ Non-goals: replacing the existing `justice-playerportal-website` or `justice-log
 |---|---|
 | Login Website | Email/username + password sign-in, registration (with email verification), forgot/reset password, social login (start with Google + one more, e.g. Discord or Steam), sign out |
 | Account upgrade | Upgrade a headless (platform-only) account to a full account |
-| Account linking | List linked platforms, link a new platform, unlink |
+| Account linking | List linked platforms, link a new platform, unlink. A headless account (no email and password, only platform sign-in) can't unlink: hide Unlink and refuse it in the action too, or the player loses the only way into the account. Show "Upgrade your account" instead |
 | Account management | View/edit profile (display name, etc.), change password, change email |
 | Redeem code | Redeem a code and show what was granted |
 | GDPR | Request account deletion (and cancel it), request a personal data download |
@@ -81,7 +81,7 @@ Browser ──(HttpOnly session cookie)──▶ Sample app server (loaders/acti
    2. **No `request_id` in the URL (fallback, needed in prod today).** If a player opens `/login` directly, or IAM is still sending browsers to the AccelByte login site, the `/login` loader starts the authorize request from the server. It creates `state` + PKCE the same way, calls `GET /iam/v3/oauth/authorize` without following the redirect, and takes the `request_id` from the `Location` header.
    3. The `/login` action posts the credentials to IAM `POST /iam/v3/authenticate` (with `request_id`), from the server, and reads `code` from IAM's redirect. It handles MFA and login-queue responses on the way.
    4. `/auth/callback` checks `state`, exchanges `code` + verifier at `/iam/v3/oauth/token`, stores the tokens, sets the cookie and redirects into the portal.
-2. **Social login:** `/login` offers the platform buttons and sends the browser to IAM `GET /iam/v3/oauth/platforms/{platformId}/authorize?request_id=…`. IAM handles the platform callback and returns to `/auth/callback` with a code. "Not linked" and "create account" outcomes go to the register or link screens. **Verify in M3:** some of these outcomes may redirect to the login website, which is the AccelByte login site in prod today. If so, use the platform token grant from the server for those platforms instead (as type-so-fast does for Google).
+2. **Social login:** `/login` offers the platform buttons and sends the browser to IAM `GET /iam/v3/oauth/platforms/{platformId}/authorize?request_id=…`. IAM handles the platform callback and returns to `/auth/callback` with a code. "Not linked" and "create account" outcomes go to the register or link screens. **Verify in M3:** some of these outcomes may redirect to the login website, which is the AccelByte login site in prod today. If so, use the platform token grant from the server for those platforms instead (as type-so-fast does for Google). Decided 2026-11-24: Google also goes through IAM's redirect, like every other platform, because that's how a Login Website normally works. The ID-token flow type-so-fast uses is not the default (see section 9 for the setup it needs instead).
 3. **Registration:** a server action creates the user (IAM v4 public users), runs email verification by code, records legal acceptance, then signs the player in.
 4. **Refresh:** done on the server, in the root middleware, so each request refreshes at most once (React Router's single fetch sends one request per navigation). Replace both tokens and treat a failed refresh as signed out. IAM revokes a used refresh token, so two parallel requests both refreshing would sign the player out: refresh a little before expiry, and keep an in-process lock keyed by refresh token for same-instance races.
 5. **Sign out:** revoke the token at IAM (`/iam/v3/oauth/revoke`), delete the session and clear the cookie.
@@ -153,7 +153,10 @@ player-portal-sample/
    - Redirect URI: `https://<host>/auth/callback`.
    - Player-level permissions for the features in use.
 3. The studio's custom login website URL set to `https://<host>/login`, once that's available in prod. It enables the redirect flow. Until then, the sample uses its fallback.
-4. Third-party platform credentials (Google, etc.) configured in the namespace for social login and linking.
+4. Third-party platform credentials (Google, etc.) configured in the namespace for social login and linking, set up for **web login**, not the game-client setup. For Google, the Admin Portal's default in a game namespace is the game-client setup (Redirect URI `http://127.0.0.1`), which fails here with `redirect_uri_mismatch`. Instead:
+   - In AGS, set the Google Redirect URI to `<IAM base URL>/iam/v3/platforms/google/authenticate`. IAM builds that address from its own base URL, which has no studio label (e.g. `https://internal.gamingservices.accelbyte.io/...`).
+   - In Google Cloud Console, add that address under Authorized redirect URIs, plus `<IAM base URL>/iam/v3/public/namespaces/<namespace>/users/me/platforms/google/web/link/establish` and `.../web/reauth/establish` for linking. Keep any existing entries, such as `http://127.0.0.1`, so other apps on the same Google client still work.
+   - One namespace stores one Redirect URI per platform, so a game-client Google sign-in that relies on `127.0.0.1` can't share the namespace. A web app that uses Google's ID-token sign-in (like type-so-fast) is unaffected, since that flow never uses the Redirect URI.
 5. Optional, per feature: redeem code campaigns (Platform), legal documents (Legal), GDPR configuration.
 
 An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 where the CLI supports them.
@@ -162,7 +165,7 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 
 - **Clients:** one-click deploy instructions for at least two hosts (e.g. Vercel and a Node container), plus a generic `npm run build && npm start`.
 - **AccelByte demo:** host still to be decided.
-- **Dev environment:** internal env, namespace `bahlil-lahadalia` (studio `bahlil`), base URL `https://bahlil-lahadalia.internal.gamingservices.accelbyte.io`, AGS CLI profile `bahlil-lahadalia`. Internal supports the custom login website URL, so the redirect flow is built and tested here.
+- **Dev environment:** internal env, studio namespace `bahlil` ("Evergrande Studio"), base URL `https://bahlil.internal.gamingservices.accelbyte.io`, AGS CLI profile `bahlil`. The portal runs at the studio level because it's the account home shared by every game (full accounts, cross-game linking, headless upgrade), and the custom login website URL is a studio setting. Moved from game namespace `bahlil-lahadalia` on 2026-11-24. Internal supports the custom login website URL, so the redirect flow is built and tested here.
 - **Trap to avoid:** AGS public cloud runs on `*.gamingservices.accelbyte.io`. A demo on `*.accelbyte.io` is **same-site** with IAM, which can make cookie-based mistakes appear to work. Test the demo on a non-`accelbyte.io` domain too, at least in CI or staging.
 
 ## 11. Milestones
@@ -172,14 +175,14 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 | M0 | Scaffold (React Router v8, Tailwind v4, tokens), env config, AGS TS SDK proven server-side, HttpOnly cookie session, security headers. **Done 2026-11-24.** |
 | M1 | Sign in / sign out end to end (authorize → `/login` → callback → portal), refresh with lock, MFA + login queue handling |
 | M2 | Registration with email verification + legal acceptance, forgot/reset password |
-| M3 | Social login + account linking/unlinking, headless account upgrade |
+| M3 | Social login + account linking/unlinking (headless accounts can't unlink), headless account upgrade |
 | M4 | Account management (profile, password, email) |
 | M5 | Redeem code, GDPR deletion and data download |
 | M6 | README, AGS setup script, deploy guides, security test pass, demo deployment, publish to GitHub |
 
 ## 12. Notes from M0
 
-- IAM client `0f1b91db4a614cc0875f9750621d9e12` (Public, no permissions) created in `bahlil-lahadalia` by `scripts/create-iam-client.sh`. Redirect URI `http://localhost:5173/auth/callback`. (A first, confidential client was deleted when the design moved to a public client.)
+- IAM client `37ebc71cc6ef441983d474f81fa6e13a` (Public, no permissions) created in `bahlil` by `scripts/create-iam-client.sh` (replacing `0f1b91db4a614cc0875f9750621d9e12` in `bahlil-lahadalia`). Redirect URI `http://localhost:5173/auth/callback`. (A first, confidential client was deleted when the design moved to a public client.)
 - IAM validates the client ID as a UUIDv4 without hyphens.
 - `npm run check:ags` confirms `/oauth/authorize` with PKCE answers 302 with a `request_id`, read without following the redirect. That is the fallback flow in section 4. It currently redirects to the AccelByte login site, because the studio's custom login website URL isn't set yet (set it in M1).
 - **Check in M1:** IAM's revoke endpoint asks for Basic auth from the client that issued the token; `clientAuth()` sends `clientId:` with an empty password. Measure a real player token's size for the cookie budget.
@@ -190,6 +193,7 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 ## 13. Open questions
 
 - Demo hosting: AccelByte AWS or a hosting service (team question).
+- Google and other login platforms at the studio level, and a Legal Documents menu in the studio namespace (team question): see [TEAM-DISCUSSION.md](TEAM-DISCUSSION.md).
 - Second social platform for v1 (Discord? Steam? Apple?).
 - Portal theme: Dark (design-system default) or Light.
 - Font and logo licensing for the public repo.

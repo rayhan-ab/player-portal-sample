@@ -4,6 +4,7 @@ import { AuthLayout } from '~/components/AuthLayout'
 import { Button } from '~/components/ui/Button'
 import { Callout } from '~/components/ui/Callout'
 import { Field } from '~/components/ui/Field'
+import { useSubmitting } from '~/lib/pending'
 import { continueSignIn } from '~/server/auth.server'
 import { sendMfaEmailCode, verifyMfa } from '~/server/iam.server'
 import { readSession } from '~/server/session.server'
@@ -66,6 +67,8 @@ export default function TwoFactor({ loaderData, actionData }: Route.ComponentPro
   const [factor, setFactor] = useState(loaderData.defaultFactor)
   const navigation = useNavigation()
   const busy = navigation.state !== 'idle' && navigation.formMethod === 'POST'
+  const verifying = useSubmitting({ intent: 'verify' })
+  const sending = useSubmitting({ intent: 'send-email' })
   const info = FACTORS[factor] ?? FACTORS.authenticator!
 
   return (
@@ -106,11 +109,11 @@ export default function TwoFactor({ loaderData, actionData }: Route.ComponentPro
           autoFocus
         />
 
-        <Button type="submit" name="intent" value="verify" disabled={busy}>
-          {busy ? 'Verifying…' : 'Verify'}
+        <Button type="submit" name="intent" value="verify" disabled={busy} loading={verifying}>
+          {verifying ? 'Verifying…' : 'Verify'}
         </Button>
         {factor === 'email' ? (
-          <Button type="submit" name="intent" value="send-email" variant="secondary" disabled={busy} formNoValidate>
+          <Button type="submit" name="intent" value="send-email" variant="secondary" disabled={busy} loading={sending} formNoValidate>
             Send a new code
           </Button>
         ) : null}
