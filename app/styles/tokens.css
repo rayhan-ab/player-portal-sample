@@ -1,0 +1,224 @@
+/*
+ * Design tokens: the one file to edit when you re-skin this sample.
+ *
+ * Values come from the AccelByte Web Design System (primitives, the Dark and
+ * Light themes, type, space, shape and motion). Components and pages only read
+ * the semantic names (--ab-color-*, --ab-font-*, --ab-space-*, ...), so a new
+ * brand only needs new values here.
+ *
+ * Dark is the default theme. Set data-ab-theme="light" on <html> to switch.
+ */
+
+/* ── Fonts ───────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: 'Martian Grotesk';
+  font-style: normal;
+  font-weight: 100 1000;
+  font-stretch: 75% 200%;
+  font-display: swap;
+  src: url('/fonts/MartianGrotesk-wdth-wght.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/inter-variable.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Martian Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/MartianMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Martian Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/MartianMono-SemiBold.woff2') format('woff2');
+}
+
+:root {
+  /* ── Primitive palette ───────────────────────────────────────────── */
+  --ab-blue-50: #eef5ff;
+  --ab-blue-100: #d9e9ff;
+  --ab-blue-200: #b8d5ff;
+  --ab-blue-300: #8dbbff;
+  --ab-blue-400: #5b99ff;
+  --ab-blue-500: #2f7cff;
+  --ab-blue-600: #0b6cff;
+  --ab-blue-700: #0758d0;
+  --ab-blue-800: #0646a6;
+  --ab-blue-900: #073b82;
+  --ab-blue-950: #05234f;
+
+  --ab-neutral-0: #ffffff;
+  --ab-neutral-50: #f5f7fa;
+  --ab-neutral-100: #e9eef4;
+  --ab-neutral-200: #d4dce7;
+  --ab-neutral-300: #b6c0ce;
+  --ab-neutral-400: #909daf;
+  --ab-neutral-500: #6f7b8d;
+  --ab-neutral-600: #536074;
+  --ab-neutral-700: #39465a;
+  --ab-neutral-800: #223044;
+  --ab-neutral-900: #142033;
+  --ab-neutral-950: #071426;
+  --ab-black: #05080f;
+
+  --ab-info-100: #dff5ff;
+  --ab-info-500: #229bd6;
+  --ab-info-800: #07506f;
+  --ab-success-100: #dcf8ec;
+  --ab-success-500: #18a873;
+  --ab-success-800: #086044;
+  --ab-warning-100: #fff0cf;
+  --ab-warning-500: #dc8b13;
+  --ab-warning-800: #754407;
+  --ab-danger-100: #ffe3e5;
+  --ab-danger-500: #d94450;
+  --ab-danger-800: #81242c;
+
+  --ab-white-a04: rgb(255 255 255 / 4%);
+  --ab-white-a08: rgb(255 255 255 / 8%);
+  --ab-white-a12: rgb(255 255 255 / 12%);
+  --ab-white-a20: rgb(255 255 255 / 20%);
+  --ab-white-a32: rgb(255 255 255 / 32%);
+  --ab-black-a48: rgb(5 8 15 / 48%);
+  --ab-black-a72: rgb(5 8 15 / 72%);
+  --ab-blue-a12: rgb(11 108 255 / 12%);
+  --ab-blue-a24: rgb(11 108 255 / 24%);
+
+  /* ── Type ────────────────────────────────────────────────────────── */
+  --ab-font-display: 'Martian Grotesk', 'Arial Black', sans-serif;
+  --ab-font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ab-font-mono: 'Martian Mono', 'SFMono-Regular', 'Cascadia Code', Consolas, monospace;
+
+  --ab-font-size-12: 0.75rem;
+  --ab-font-size-14: 0.875rem;
+  --ab-font-size-16: 1rem;
+  --ab-font-size-18: 1.125rem;
+  --ab-font-size-20: 1.25rem;
+  --ab-font-size-24: 1.5rem;
+  --ab-font-size-32: 2rem;
+  --ab-font-size-40: clamp(2rem, 1.7rem + 1.5vw, 2.5rem);
+
+  --ab-font-weight-regular: 400;
+  --ab-font-weight-medium: 500;
+  --ab-font-weight-semibold: 600;
+  --ab-font-weight-bold: 700;
+
+  --ab-line-heading: 1.08;
+  --ab-line-body: 1.6;
+  --ab-tracking-heading: -0.035em;
+  --ab-tracking-label: 0.1em;
+
+  /* ── Space (8px rhythm, 4px for optical adjustment) ─────────────── */
+  --ab-space-4: 0.25rem;
+  --ab-space-8: 0.5rem;
+  --ab-space-12: 0.75rem;
+  --ab-space-16: 1rem;
+  --ab-space-24: 1.5rem;
+  --ab-space-32: 2rem;
+  --ab-space-40: 2.5rem;
+  --ab-space-48: 3rem;
+  --ab-space-64: 4rem;
+
+  --ab-width-form: 28rem;
+  --ab-width-content: 64rem;
+  --ab-width-rail: 15rem;
+  --ab-gutter: clamp(1rem, 4vw, 2.5rem);
+
+  --ab-control-sm: 2.5rem;
+  --ab-control-md: 3rem;
+  --ab-touch-target: 2.75rem;
+  --ab-icon-16: 1rem;
+  --ab-icon-20: 1.25rem;
+  --ab-icon-24: 1.5rem;
+
+  /* ── Shape ───────────────────────────────────────────────────────── */
+  --ab-radius-4: 0.25rem;
+  --ab-radius-8: 0.5rem;
+  --ab-radius-12: 0.75rem;
+  --ab-radius-16: 1rem;
+  --ab-radius-pill: 999px;
+  --ab-radius-control: var(--ab-radius-8);
+  --ab-border-thin: 1px;
+  --ab-border-strong: 2px;
+
+  --ab-shadow-sm: 0 4px 12px rgb(5 8 15 / 20%);
+  --ab-shadow-md: 0 16px 40px rgb(5 8 15 / 28%);
+  --ab-shadow-focus: 0 0 0 4px rgb(91 153 255 / 30%);
+
+  /* ── Motion ──────────────────────────────────────────────────────── */
+  --ab-duration-fast: 120ms;
+  --ab-duration-standard: 180ms;
+  --ab-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ab-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Theme: Dark (default) ─────────────────────────────────────────── */
+:root,
+[data-ab-theme='dark'] {
+  color-scheme: dark;
+  --ab-color-canvas: var(--ab-black);
+  --ab-color-surface: #09111d;
+  --ab-color-surface-raised: #0d1828;
+  --ab-color-surface-hover: #122238;
+  --ab-color-bg-alt: var(--ab-white-a04);
+  --ab-color-text: var(--ab-neutral-50);
+  --ab-color-text-secondary: var(--ab-neutral-300);
+  --ab-color-text-muted: var(--ab-neutral-400);
+  --ab-color-text-disabled: var(--ab-neutral-500);
+  --ab-color-icon: var(--ab-neutral-0);
+  --ab-color-border-subtle: var(--ab-white-a08);
+  --ab-color-border: var(--ab-white-a12);
+  --ab-color-border-strong: var(--ab-white-a20);
+  --ab-color-link: var(--ab-blue-300);
+  --ab-color-link-hover: var(--ab-blue-100);
+  --ab-color-focus: var(--ab-blue-400);
+  --ab-color-action: var(--ab-blue-600);
+  --ab-color-action-hover: var(--ab-blue-700);
+  --ab-color-action-active: var(--ab-blue-800);
+  --ab-color-action-disabled: var(--ab-neutral-700);
+  --ab-color-on-action: var(--ab-neutral-0);
+}
+
+/* ── Theme: Light ──────────────────────────────────────────────────── */
+[data-ab-theme='light'] {
+  color-scheme: light;
+  --ab-color-canvas: var(--ab-neutral-50);
+  --ab-color-surface: var(--ab-neutral-0);
+  --ab-color-surface-raised: var(--ab-neutral-0);
+  --ab-color-surface-hover: var(--ab-blue-50);
+  --ab-color-bg-alt: rgb(238 245 255 / 50%);
+  --ab-color-text: var(--ab-neutral-950);
+  --ab-color-text-secondary: var(--ab-neutral-700);
+  --ab-color-text-muted: var(--ab-neutral-600);
+  --ab-color-text-disabled: var(--ab-neutral-400);
+  --ab-color-icon: var(--ab-blue-600);
+  --ab-color-border-subtle: var(--ab-neutral-100);
+  --ab-color-border: var(--ab-neutral-200);
+  --ab-color-border-strong: var(--ab-neutral-300);
+  --ab-color-link: var(--ab-blue-700);
+  --ab-color-link-hover: var(--ab-blue-900);
+  --ab-color-focus: var(--ab-blue-600);
+  --ab-color-action: var(--ab-blue-600);
+  --ab-color-action-hover: var(--ab-blue-700);
+  --ab-color-action-active: var(--ab-blue-800);
+  --ab-color-action-disabled: var(--ab-neutral-400);
+  --ab-color-on-action: var(--ab-neutral-0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

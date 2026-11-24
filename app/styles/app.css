@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/*
+ * Map the design tokens into Tailwind so utilities such as `bg-surface`,
+ * `text-muted`, `font-display` or `rounded-control` read the tokens. Edit
+ * tokens.css, not this block, to re-skin.
+ */
+@theme inline {
+  --color-canvas: var(--ab-color-canvas);
+  --color-surface: var(--ab-color-surface);
+  --color-surface-raised: var(--ab-color-surface-raised);
+  --color-surface-hover: var(--ab-color-surface-hover);
+  --color-bg-alt: var(--ab-color-bg-alt);
+  --color-text: var(--ab-color-text);
+  --color-secondary: var(--ab-color-text-secondary);
+  --color-muted: var(--ab-color-text-muted);
+  --color-disabled: var(--ab-color-text-disabled);
+  --color-icon: var(--ab-color-icon);
+  --color-border-subtle: var(--ab-color-border-subtle);
+  --color-border: var(--ab-color-border);
+  --color-border-strong: var(--ab-color-border-strong);
+  --color-link: var(--ab-color-link);
+  --color-link-hover: var(--ab-color-link-hover);
+  --color-focus: var(--ab-color-focus);
+  --color-action: var(--ab-color-action);
+  --color-action-hover: var(--ab-color-action-hover);
+  --color-action-active: var(--ab-color-action-active);
+  --color-on-action: var(--ab-color-on-action);
+
+  --color-info: var(--ab-info-500);
+  --color-info-soft: var(--ab-info-100);
+  --color-info-strong: var(--ab-info-800);
+  --color-success: var(--ab-success-500);
+  --color-success-soft: var(--ab-success-100);
+  --color-success-strong: var(--ab-success-800);
+  --color-warning: var(--ab-warning-500);
+  --color-warning-soft: var(--ab-warning-100);
+  --color-warning-strong: var(--ab-warning-800);
+  --color-danger: var(--ab-danger-500);
+  --color-danger-soft: var(--ab-danger-100);
+  --color-danger-strong: var(--ab-danger-800);
+
+  --font-display: var(--ab-font-display);
+  --font-sans: var(--ab-font-body);
+  --font-mono: var(--ab-font-mono);
+
+  --radius-control: var(--ab-radius-control);
+  --radius-card: var(--ab-radius-16);
+  --radius-pill: var(--ab-radius-pill);
+
+  --shadow-focus: var(--ab-shadow-focus);
+}
+
+@layer base {
+  html {
+    min-width: 20rem;
+  }
+  body {
+    margin: 0;
+    background: var(--ab-color-canvas);
+    color: var(--ab-color-text);
+    font-family: var(--ab-font-body);
+    font-size: var(--ab-font-size-16);
+    line-height: var(--ab-line-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--ab-color-text);
+    font-family: var(--ab-font-display);
+    font-stretch: 100%;
+    font-weight: var(--ab-font-weight-bold);
+    letter-spacing: var(--ab-tracking-heading);
+    line-height: var(--ab-line-heading);
+    text-wrap: balance;
+  }
+  a {
+    color: var(--ab-color-link);
+  }
+  a:hover {
+    color: var(--ab-color-link-hover);
+  }
+  :focus-visible {
+    outline: var(--ab-border-strong) solid var(--ab-color-focus);
+    outline-offset: var(--ab-space-4);
+  }
+}
