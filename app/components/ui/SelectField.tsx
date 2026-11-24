@@ -20,7 +20,7 @@ export function SelectField({ label, help, error, className, id, children, ...se
 
   return (
     <div className={cx('grid gap-2', className)}>
-      <label htmlFor={selectId} className={cx('text-[length:var(--ab-font-size-14)] font-bold', error ? 'text-danger' : 'text-text')}>
+      <label htmlFor={selectId} className={cx('text-(length:--ab-font-size-14) font-bold', error ? 'text-danger' : 'text-text')}>
         {label}
       </label>
       <div className="relative">
@@ -29,8 +29,8 @@ export function SelectField({ label, help, error, className, id, children, ...se
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cx(
-            'min-h-[var(--ab-control-md)] w-full cursor-pointer appearance-none rounded-control border bg-bg-alt pr-11 pl-4 text-text outline-none',
-            'transition-[border-color,box-shadow] duration-[var(--ab-duration-fast)]',
+            'min-h-(--ab-control-md) w-full cursor-pointer appearance-none rounded-control border bg-bg-alt pr-11 pl-4 text-text outline-none',
+            'transition-[border-color,box-shadow] duration-(--ab-duration-fast)',
             'hover:border-muted focus:border-focus focus:shadow-focus',
             error ? 'border-danger' : 'border-border-strong'
           )}
@@ -46,12 +46,12 @@ export function SelectField({ label, help, error, className, id, children, ...se
         />
       </div>
       {error ? (
-        <p id={errorId} className="m-0 text-[length:var(--ab-font-size-12)] text-danger">
+        <p id={errorId} className="m-0 text-(length:--ab-font-size-12) text-danger">
           {error}
         </p>
       ) : null}
       {help ? (
-        <div id={helpId} className="m-0 text-[length:var(--ab-font-size-12)] text-muted">
+        <div id={helpId} className="m-0 text-(length:--ab-font-size-12) text-muted">
           {help}
         </div>
       ) : null}

@@ -6,5 +6,5 @@ export function Card({ className, ...props }: ComponentProps<'section'>) {
 }
 
 export function CardTitle({ className, ...props }: ComponentProps<'h2'>) {
-  return <h2 className={cx('m-0 text-[length:var(--ab-font-size-24)]', className)} {...props} />
+  return <h2 className={cx('m-0 text-(length:--ab-font-size-24)', className)} {...props} />
 }

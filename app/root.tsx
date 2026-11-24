@@ -83,8 +83,8 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   // Never show stack traces or AGS error bodies to players; they can contain
   // internal details. Server logs have the full error.
   return (
-    <main className="mx-auto max-w-[var(--ab-width-form)] px-[var(--ab-gutter)] py-16">
-      <h1 className="text-[length:var(--ab-font-size-32)]">{title}</h1>
+    <main className="mx-auto max-w-(--ab-width-form) px-(--ab-gutter) py-16">
+      <h1 className="text-(length:--ab-font-size-32)">{title}</h1>
       <p className="text-secondary">{detail}</p>
       <a href="/">Go to the home page</a>
     </main>

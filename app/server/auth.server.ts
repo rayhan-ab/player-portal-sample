@@ -138,7 +138,7 @@ export function signInErrorKey(error: string, description: string): string {
  * Start a sign-in: a fresh `state` and PKCE pair, plus an IAM authorization
  * request for a sign-in form to post against.
  */
-export async function beginSignIn(returnTo: string): Promise<PendingSignIn> {
+export async function beginSignIn(returnTo: string): Promise<PendingSignIn & { requestId: string }> {
   const { state, codeVerifier, codeChallenge } = createPkce()
   return {
     state,

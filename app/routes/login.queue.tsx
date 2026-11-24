@@ -44,18 +44,18 @@ export default function Queue({ loaderData }: Route.ComponentProps) {
   return (
     <AuthLayout title="You're in the queue" intro="Lots of players are signing in right now. Keep this page open; it updates by itself.">
       <dl className="m-0 grid grid-cols-2 gap-4">
-        <div className="grid gap-1 rounded-[var(--ab-radius-12)] border border-border bg-surface-raised p-4">
-          <dt className="text-[length:var(--ab-font-size-12)] text-muted">Your position</dt>
-          <dd className="m-0 font-mono text-[length:var(--ab-font-size-24)]" aria-live="polite">
+        <div className="grid gap-1 rounded-(--ab-radius-12) border border-border bg-surface-raised p-4">
+          <dt className="text-(length:--ab-font-size-12) text-muted">Your position</dt>
+          <dd className="m-0 font-mono text-(length:--ab-font-size-24)" aria-live="polite">
             {loaderData.position.toLocaleString('en-US')}
           </dd>
         </div>
-        <div className="grid gap-1 rounded-[var(--ab-radius-12)] border border-border bg-surface-raised p-4">
-          <dt className="text-[length:var(--ab-font-size-12)] text-muted">Estimated wait</dt>
-          <dd className="m-0 text-[length:var(--ab-font-size-18)]">{formatWait(loaderData.waitSeconds)}</dd>
+        <div className="grid gap-1 rounded-(--ab-radius-12) border border-border bg-surface-raised p-4">
+          <dt className="text-(length:--ab-font-size-12) text-muted">Estimated wait</dt>
+          <dd className="m-0 text-(length:--ab-font-size-18)">{formatWait(loaderData.waitSeconds)}</dd>
         </div>
       </dl>
-      <p className="m-0 text-[length:var(--ab-font-size-14)] text-secondary">
+      <p className="m-0 text-(length:--ab-font-size-14) text-secondary">
         <Link to="/login">Cancel and go back</Link>
       </p>
     </AuthLayout>

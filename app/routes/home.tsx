@@ -14,7 +14,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   return (
-    <main className="mx-auto grid min-h-dvh max-w-[var(--ab-width-form)] content-center gap-8 px-[var(--ab-gutter)] py-16">
+    <main className="mx-auto grid min-h-dvh max-w-(--ab-width-form) content-center gap-8 px-(--ab-gutter) py-16">
       <img src="/logo.svg" alt="AccelByte" width={160} height={34} />
       <Card>
         <CardTitle>Player Portal</CardTitle>

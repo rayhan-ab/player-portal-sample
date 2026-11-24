@@ -76,16 +76,16 @@ export default function TwoFactor({ loaderData, actionData }: Route.ComponentPro
       <Form method="post" className="grid gap-5" noValidate>
         {loaderData.factors.length > 1 ? (
           <fieldset className="m-0 grid gap-2 border-0 p-0">
-            <legend className="mb-2 text-[length:var(--ab-font-size-14)] font-bold">Verify with</legend>
+            <legend className="mb-2 text-(length:--ab-font-size-14) font-bold">Verify with</legend>
             {loaderData.factors.map(option => (
-              <label key={option} className="flex items-center gap-2 text-[length:var(--ab-font-size-14)] text-secondary">
+              <label key={option} className="flex items-center gap-2 text-(length:--ab-font-size-14) text-secondary">
                 <input
                   type="radio"
                   name="factor"
                   value={option}
                   checked={factor === option}
                   onChange={() => setFactor(option)}
-                  className="accent-[var(--ab-color-action)]"
+                  className="accent-(--ab-color-action)"
                 />
                 {FACTORS[option]?.label ?? option}
               </label>
@@ -116,7 +116,7 @@ export default function TwoFactor({ loaderData, actionData }: Route.ComponentPro
         ) : null}
       </Form>
 
-      <p className="m-0 text-[length:var(--ab-font-size-14)] text-secondary">
+      <p className="m-0 text-(length:--ab-font-size-14) text-secondary">
         <Link to="/login">Back to sign in</Link>
       </p>
     </AuthLayout>

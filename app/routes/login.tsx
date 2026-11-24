@@ -1,10 +1,12 @@
 import { data, Form, Link, redirect, useNavigation } from 'react-router'
 import { AuthLayout } from '~/components/AuthLayout'
+import { SocialSignIn } from '~/components/SocialSignIn'
 import { Button } from '~/components/ui/Button'
 import { Callout } from '~/components/ui/Callout'
 import { Field } from '~/components/ui/Field'
+import { PasswordField } from '~/components/ui/PasswordField'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
-import { getRegistrationConfig } from '~/server/iam-config.server'
+import { getRegistrationConfig, getSocialPlatforms } from '~/server/iam-config.server'
 import { commitSession, readSession, safeReturnTo, setCookieHeaders } from '~/server/session.server'
 import type { Route } from './+types/login'
 
@@ -41,10 +43,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     pending = await beginSignIn(url.searchParams.has('returnTo') ? returnTo : (pending?.returnTo ?? '/'))
   }
 
-  const { usernameDisabled } = await getRegistrationConfig()
+  const [{ usernameDisabled }, socialPlatforms] = await Promise.all([getRegistrationConfig(), getSocialPlatforms()])
   const errorKey = url.searchParams.get('error')
   return data(
-    { usernameDisabled, error: errorKey ? (ERRORS[errorKey] ?? ERRORS.unknown) : null },
+    { usernameDisabled, socialPlatforms, returnTo: pending.returnTo, error: errorKey ? (ERRORS[errorKey] ?? ERRORS.unknown) : null },
     { headers: setCookieHeaders(commitSession(request, { pendingSignIn: pending })) }
   )
 }
@@ -74,6 +76,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
   return (
     <AuthLayout title="Sign in" intro="Use your game account.">
       {error ? <Callout tone="error">{error}</Callout> : null}
+      <SocialSignIn platforms={loaderData.socialPlatforms} returnTo={loaderData.returnTo} />
       <Form method="post" className="grid gap-5" noValidate>
         <Field
           label={loginLabel}
@@ -84,12 +87,12 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
           required
           autoFocus
         />
-        <Field label="Password" name="password" type="password" autoComplete="current-password" required />
+        <PasswordField label="Password" name="password" autoComplete="current-password" required />
         <Button type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>
       </Form>
-      <p className="m-0 text-[length:var(--ab-font-size-14)] text-secondary">
+      <p className="m-0 text-(length:--ab-font-size-14) text-secondary">
         New here? <Link to="/register">Create an account</Link>
       </p>
     </AuthLayout>

@@ -5,6 +5,7 @@ import { AuthLayout } from '~/components/AuthLayout'
 import { Button } from '~/components/ui/Button'
 import { Callout } from '~/components/ui/Callout'
 import { Field } from '~/components/ui/Field'
+import { PasswordField } from '~/components/ui/PasswordField'
 import { SelectField } from '~/components/ui/SelectField'
 import { validateField, type FieldName, type ValidationRules } from '~/lib/validation'
 import { clientAuth, createAgsSdk } from '~/server/ags.server'
@@ -252,10 +253,9 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             }
             onBlur={validateOnBlur('displayName', 'displayName')}
           />
-          <Field
+          <PasswordField
             label="Password"
             name="password"
-            type="password"
             autoComplete="new-password"
             required
             maxLength={rules.password?.maxLength}
@@ -274,8 +274,8 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
 
           {policies.length > 0 ? (
             <div className="grid gap-2">
-              <label className="flex items-start gap-2 text-[length:var(--ab-font-size-14)] text-secondary">
-                <input type="checkbox" name="acceptPolicies" className="mt-1 accent-[var(--ab-color-action)]" />
+              <label className="flex items-start gap-2 text-(length:--ab-font-size-14) text-secondary">
+                <input type="checkbox" name="acceptPolicies" className="mt-1 accent-(--ab-color-action)" />
                 <span>
                   I agree to the{' '}
                   {policies.map((p, i) => (
@@ -293,9 +293,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
                   .
                 </span>
               </label>
-              {errors.acceptPolicies ? (
-                <p className="m-0 text-[length:var(--ab-font-size-12)] text-danger">{errors.acceptPolicies}</p>
-              ) : null}
+              {errors.acceptPolicies ? <p className="m-0 text-(length:--ab-font-size-12) text-danger">{errors.acceptPolicies}</p> : null}
             </div>
           ) : null}
         </div>
@@ -318,7 +316,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         </Button>
       </Form>
 
-      <p className="m-0 text-[length:var(--ab-font-size-14)] text-secondary">
+      <p className="m-0 text-(length:--ab-font-size-14) text-secondary">
         Already have an account? <Link to="/login">Sign in</Link>
       </p>
     </AuthLayout>

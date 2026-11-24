@@ -1,5 +1,6 @@
-import { CountryApi, InputValidationsApi } from '@accelbyte/sdk-iam'
+import { CountryApi, InputValidationsApi, ThirdPartyCredentialApi } from '@accelbyte/sdk-iam'
 import { PoliciesApi } from '@accelbyte/sdk-legal'
+import { isWebLoginPlatform, WEB_LOGIN_PLATFORMS, type WebLoginPlatform } from '~/lib/platforms'
 import type { FieldName, FieldRule, ValidationRules } from '~/lib/validation'
 import { createAgsSdk } from './ags.server'
 import { getEnv } from './env.server'
@@ -30,22 +31,37 @@ export type LegalPolicy = {
 }
 
 const TTL_MS = 5 * 60 * 1000
-const cache = new Map<string, { value: unknown; expiresAt: number }>()
+const cache = new Map<string, { value: Promise<unknown>; expiresAt: number }>()
 
-async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+/**
+ * Load a value once per TTL. Concurrent callers share one in-flight load, and a
+ * load that fails is dropped so the next call tries again.
+ */
+export function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   const hit = cache.get(key)
-  if (hit && hit.expiresAt > Date.now()) return hit.value as T
-  const value = await load()
+  if (hit && hit.expiresAt > Date.now()) return hit.value as Promise<T>
+  const value = load()
   cache.set(key, { value, expiresAt: Date.now() + TTL_MS })
+  value.catch(() => {
+    if (cache.get(key)?.value === value) cache.delete(key)
+  })
   return value
 }
 
+/**
+ * Read one boolean namespace setting. Throws if IAM doesn't answer with one,
+ * so a failure is never cached as `false` (which would, for example, skip
+ * mandatory email verification).
+ */
 async function readConfigFlag(key: string): Promise<boolean> {
   const { agsBaseUrl, agsNamespace } = getEnv()
   const response = await fetch(new URL(`/iam/v3/public/namespaces/${encodeURIComponent(agsNamespace)}/config/${key}`, agsBaseUrl))
-  if (!response.ok) return false
-  const body = (await response.json()) as { result?: Record<string, unknown> }
-  return body.result?.[key] === true
+  const body = (await response.json().catch(() => null)) as { result?: Record<string, unknown> } | null
+  const value = body?.result?.[key]
+  if (!response.ok || typeof value !== 'boolean') {
+    throw new Error(`IAM config ${key} unavailable: HTTP ${response.status}`)
+  }
+  return value
 }
 
 export function getRegistrationConfig(): Promise<RegistrationConfig> {
@@ -125,4 +141,23 @@ export async function isAvailable(field: 'username' | 'uniqueDisplayName', value
   // IAM answers 404 when nobody has the value, 204 when it is taken.
   const response = await fetch(url)
   return response.status === 404
+}
+
+/**
+ * Platforms switched on in the namespace that a player can sign in with from
+ * a website, in a fixed order. Empty if IAM can't be reached, so the sign-in
+ * page still works with a password.
+ */
+export function getSocialPlatforms(): Promise<WebLoginPlatform[]> {
+  // Catch outside the cache, so an IAM error isn't remembered as "no platforms".
+  return cached('social-platforms', async () => {
+    const { data } = await ThirdPartyCredentialApi(createAgsSdk()).getPlatformsClientsActive_v3()
+    const active = new Set(data.filter(p => p.IsActive).map(p => p.PlatformId))
+    return (Object.keys(WEB_LOGIN_PLATFORMS) as WebLoginPlatform[]).filter(id => active.has(id))
+  }).catch(() => [])
+}
+
+/** True if a player may start a sign-in with this platform. */
+export async function isSocialPlatform(id: string): Promise<boolean> {
+  return isWebLoginPlatform(id) && (await getSocialPlatforms()).includes(id)
 }

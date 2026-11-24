@@ -86,6 +86,17 @@ export function authorizeUrl(state: string, codeChallenge: string): URL {
 }
 
 /**
+ * Where to send the browser to sign in with a third-party platform. IAM sends
+ * the player to the platform, then back to our redirect URI with a code. A
+ * player with no account yet gets a new headless account.
+ */
+export function platformAuthorizeUrl(platformId: string, requestId: string): URL {
+  const url = iamUrl(`/iam/v3/oauth/platforms/${encodeURIComponent(platformId)}/authorize`)
+  url.search = new URLSearchParams({ request_id: requestId, client_id: getEnv().agsClientId, redirect_uri: getRedirectUri() }).toString()
+  return url
+}
+
+/**
  * Start an authorization request from the server and return its `request_id`.
  * IAM answers with a redirect to the login website; we read the `request_id`
  * from it and show our own form instead of following it.
