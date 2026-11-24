@@ -16,7 +16,7 @@ export function Callout({ tone = 'info', className, ...props }: ComponentProps<'
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
-      className={cx('rounded-[var(--ab-radius-8)] border px-5 py-4 text-[length:var(--ab-font-size-14)]', tones[tone], className)}
+      className={cx('rounded-(--ab-radius-8) border px-5 py-4 text-(length:--ab-font-size-14)', tones[tone], className)}
       {...props}
     />
   )

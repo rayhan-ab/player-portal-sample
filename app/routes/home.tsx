@@ -1,14 +1,15 @@
-import { ButtonLink } from '~/components/ui/Button'
+import { Form } from 'react-router'
+import { Button, ButtonLink } from '~/components/ui/Button'
 import { Card, CardTitle } from '~/components/ui/Card'
-import { readSession } from '~/server/session.server'
+import { getUser } from '~/server/auth.server'
 import type { Route } from './+types/home'
 
 export const meta: Route.MetaFunction = () => [{ title: 'Player Portal' }, { name: 'description', content: 'Manage your account.' }]
 
-export async function loader({ request }: Route.LoaderArgs) {
-  const session = readSession(request)
+export async function loader({ context }: Route.LoaderArgs) {
+  const user = getUser(context)
   // Only send the browser what the page needs. Never the session or tokens.
-  return { signedIn: Boolean(session?.tokens) }
+  return { displayName: user ? user.displayName || 'player' : null }
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
@@ -18,8 +19,16 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <Card>
         <CardTitle>Player Portal</CardTitle>
         <p className="m-0 text-secondary">Sign in to manage your account, linked platforms, codes and privacy settings.</p>
-        {loaderData.signedIn ? (
-          <ButtonLink to="/account">Go to your account</ButtonLink>
+        {loaderData.displayName ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="m-0 w-full text-secondary">Signed in as {loaderData.displayName}.</p>
+            <ButtonLink to="/account">Go to your account</ButtonLink>
+            <Form method="post" action="/logout">
+              <Button type="submit" variant="secondary">
+                Sign out
+              </Button>
+            </Form>
+          </div>
         ) : (
           <div className="flex flex-wrap gap-3">
             <ButtonLink to="/login">Sign in</ButtonLink>

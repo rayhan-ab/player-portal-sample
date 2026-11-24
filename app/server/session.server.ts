@@ -1,4 +1,5 @@
 import { getEnv } from './env.server'
+import type { MfaChallenge, QueueTicket } from './iam.server'
 
 /**
  * Sessions, kept in an HttpOnly cookie. No database, no Redis, no secret.
@@ -29,6 +30,12 @@ export type PendingSignIn = {
   /** Where to send the player after sign-in. Pass through safeReturnTo. */
   returnTo: string
   createdAt: number
+  /** IAM authorization request the sign-in form posts against. */
+  requestId?: string
+  /** Set when IAM asked for a 2FA code. */
+  mfa?: MfaChallenge
+  /** Set when the player is waiting in the login queue. */
+  queue?: QueueTicket
 }
 
 export type SessionData = {
@@ -100,7 +107,20 @@ function parse(value: unknown): SessionData | null {
     typeof pendingSignIn.createdAt === 'number' &&
     pendingSignIn.createdAt + PENDING_TTL_MS > Date.now()
   ) {
-    data.pendingSignIn = pendingSignIn as PendingSignIn
+    const { state, codeVerifier, returnTo, createdAt, requestId, mfa, queue } = pendingSignIn as PendingSignIn
+    data.pendingSignIn = { state, codeVerifier, returnTo, createdAt }
+    if (isString(requestId)) data.pendingSignIn.requestId = requestId
+    if (mfa && isString(mfa.mfaToken) && Array.isArray(mfa.factors) && typeof mfa.defaultFactor === 'string') {
+      data.pendingSignIn.mfa = { mfaToken: mfa.mfaToken, factors: mfa.factors.map(String), defaultFactor: mfa.defaultFactor }
+    }
+    if (queue && isString(queue.ticket)) {
+      data.pendingSignIn.queue = {
+        ticket: queue.ticket,
+        position: Number(queue.position) || 0,
+        estimatedWaitingTimeInSeconds: Number(queue.estimatedWaitingTimeInSeconds) || 0,
+        playerPollingTimeInSeconds: Math.max(2, Number(queue.playerPollingTimeInSeconds) || 5)
+      }
+    }
   }
   return data.tokens || data.pendingSignIn ? data : null
 }
@@ -143,6 +163,12 @@ export function commitSession(request: Request, data: SessionData): string[] {
 export function destroySession(request: Request): string[] {
   const count = Math.max(1, chunkCount(readCookies(request)))
   return Array.from({ length: count }, (_, i) => serializeCookie(chunkName(i), '', 0))
+}
+
+/** True if a response already sets the session cookie (so a refresh must not overwrite it). */
+export function setsSessionCookie(headers: Headers): boolean {
+  const name = cookieName()
+  return headers.getSetCookie().some(cookie => cookie.startsWith(`${name}=`) || cookie.startsWith(`${name}.`))
 }
 
 /** Headers carrying several Set-Cookie values, for `redirect()` or `data()`. */

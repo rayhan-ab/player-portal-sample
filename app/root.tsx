@@ -1,13 +1,16 @@
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
 import type { Route } from './+types/root'
 import { nonceRouterContext, useNonce } from './nonce'
+import { authContext, loadAuth } from './server/auth.server'
 import { getEnv } from './server/env.server'
 import { applySecurityHeaders, createNonce, isCrossSiteMutation } from './server/security.server'
+import { setsSessionCookie } from './server/session.server'
 import './styles/app.css'
 
 /**
  * Runs for every document and data request: rejects cross-site form posts,
- * then adds the security headers to whatever the route returns.
+ * loads the signed-in player (refreshing their tokens when due), then adds the
+ * security headers to whatever the route returns.
  */
 export const middleware: Route.MiddlewareFunction[] = [
   async ({ request, context }, next) => {
@@ -19,7 +22,14 @@ export const middleware: Route.MiddlewareFunction[] = [
     const nonce = createNonce()
     context.set(nonceRouterContext, nonce)
 
+    const auth = await loadAuth(request)
+    context.set(authContext, auth)
+
     const response = (await next()) as Response
+    // A route that set the session itself (sign-in, sign-out) wins over a refresh.
+    if (auth.setCookies.length > 0 && !setsSessionCookie(response.headers)) {
+      for (const cookie of auth.setCookies) response.headers.append('Set-Cookie', cookie)
+    }
     applySecurityHeaders(response.headers, {
       nonce,
       isHttps: env.isHttps,
@@ -48,7 +58,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
-        <Links />
+        <Links nonce={nonce} />
       </head>
       <body>
         {children}
