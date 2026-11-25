@@ -9,7 +9,7 @@ import { Field } from '~/components/ui/Field'
 import { PasswordField } from '~/components/ui/PasswordField'
 import { SelectField } from '~/components/ui/SelectField'
 import { validateField, type FieldName, type ValidationRules } from '~/lib/validation'
-import { clientAuth, createAgsSdk } from '~/server/ags.server'
+import { agsError, clientAuth, createAgsSdk } from '~/server/ags.server'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
 import { getCountries, getRegistrationConfig, getSocialPlatforms, getValidationRules, isAvailable } from '~/server/iam-config.server'
 import type { Route } from './+types/register'
@@ -91,18 +91,8 @@ function checkValues(values: Values, rules: ValidationRules, usernameDisabled: b
   return errors
 }
 
-/** IAM error codes worth telling the player about, by field. */
-function iamFieldError(errorCode: number, message: string): FieldErrors | null {
-  const text = message.toLowerCase()
-  if (errorCode === 10133 || (text.includes('email') && (text.includes('exist') || text.includes('taken') || text.includes('conflict'))))
-    return { email: 'An account with this email already exists.' }
-  if (text.includes('unique display name') || text.includes('uniquedisplayname')) return { displayName: 'This display name is taken.' }
-  if (text.includes('username')) return { username: 'This username is taken.' }
-  if (text.includes('verification code') || text.includes('code')) return { code: 'That code is not right or has expired.' }
-  if (text.includes('age') || text.includes('date of birth')) return { dateOfBirth: 'You are not old enough to create an account.' }
-  if (text.includes('password')) return { password: 'This password is not allowed. Try a different one.' }
-  return null
-}
+/** IAM's errors for a wrong, used, expired or missing verification code. */
+const CODE_ERRORS = new Set([10136, 10137, 10138, 10152])
 
 export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData()
@@ -128,11 +118,9 @@ export async function action({ request }: Route.ActionArgs) {
   if (config.mandatoryEmailVerification && !values.code) {
     try {
       await UsersApi(sdk).createUserCodeRequest_v3({ emailAddress: values.email, languageTag: 'en-US' })
-    } catch {
-      return data(
-        { fieldErrors: {}, step: 'details' as const, error: 'We could not send a verification code. Try again in a minute.' },
-        { status: 502 }
-      )
+    } catch (error) {
+      const { status, message } = agsError(error)
+      return data({ fieldErrors: {}, step: 'details' as const, error: message }, { status })
     }
     return data({ fieldErrors: {}, step: 'verify' as const, error: null })
   }
@@ -153,13 +141,13 @@ export async function action({ request }: Route.ActionArgs) {
       ...(values.code ? { code: values.code } : {})
     })
   } catch (error) {
-    const body = (error as { response?: { data?: { errorCode?: number; errorMessage?: string } } }).response?.data
-    const mapped = iamFieldError(Number(body?.errorCode ?? 0), String(body?.errorMessage ?? ''))
-    const step = mapped?.code ? ('verify' as const) : ('details' as const)
-    return data(
-      { fieldErrors: mapped ?? {}, step, error: mapped ? null : 'We could not create your account. Please try again.' },
-      { status: 400 }
-    )
+    const { status, errorCode, message } = agsError(error)
+    // The SDK throws when IAM's answer doesn't match its schema, even on success (2xx).
+    if (status < 200 || status >= 300) {
+      // A code problem keeps the player on the code step; anything else goes back to the details.
+      const step = CODE_ERRORS.has(errorCode) ? ('verify' as const) : ('details' as const)
+      return data({ fieldErrors: {}, step, error: message }, { status })
+    }
   }
 
   // 5. Sign the new player in.

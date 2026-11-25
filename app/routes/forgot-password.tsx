@@ -7,7 +7,7 @@ import { Callout } from '~/components/ui/Callout'
 import { Field } from '~/components/ui/Field'
 import { PasswordField } from '~/components/ui/PasswordField'
 import { validateField, type ValidationRules } from '~/lib/validation'
-import { createAgsSdk } from '~/server/ags.server'
+import { agsError, createAgsSdk } from '~/server/ags.server'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
 import { getValidationRules } from '~/server/iam-config.server'
 import type { Route } from './+types/forgot-password'
@@ -37,27 +37,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   return { rules: await getValidationRules(), email, code, step: (email && code ? 'reset' : 'email') as Step }
 }
 
-/** The status and IAM error code of a failed SDK call. */
-function iamError(error: unknown): { status: number; errorCode: number } {
-  const response = (error as { response?: { status?: number; data?: { errorCode?: number } } }).response
-  return { status: response?.status ?? 0, errorCode: Number(response?.data?.errorCode ?? 0) }
-}
-
 function checkReset(values: { code: string; password: string }, rules: ValidationRules): FieldErrors {
   const errors: FieldErrors = {}
   if (!values.code) errors.code = 'Enter the code from the email.'
   const password = validateField('password', values.password, rules)
   if (password) errors.password = password
   return errors
-}
-
-/** Which field an IAM reset error belongs to. */
-function resetFieldErrors(status: number, errorCode: number): FieldErrors {
-  if (errorCode === 10142) return { password: 'Choose a password you have not used before.' }
-  if (status === 400) return { password: 'This password is not allowed. Try a different one.' }
-  // Wrong, used or expired code (403), or no account with this email (404).
-  if (status === 403 || status === 404) return { code: 'That code is not right or has expired. Request a new one.' }
-  return {}
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -74,21 +59,10 @@ export async function action({ request }: Route.ActionArgs) {
     try {
       await UsersApi(sdk).createUserForgot_ByNS_v3({ emailAddress: email, languageTag: 'en-US' })
     } catch (error) {
-      const { status } = iamError(error)
-      if (status === 429) {
-        return data(
-          { step: 'email' as Step, email, fieldErrors: {}, error: 'Too many requests. Wait a few minutes, then try again.' },
-          { status: 429 }
-        )
-      }
+      const { status, message } = agsError(error)
       // An unknown email (404) goes on to the next step like a known one, so
       // the page doesn't tell anyone which emails have an account.
-      if (status !== 404) {
-        return data(
-          { step: 'email' as Step, email, fieldErrors: {}, error: 'We could not send a reset code. Try again in a minute.' },
-          { status: 502 }
-        )
-      }
+      if (status !== 404) return data({ step: 'email' as Step, email, fieldErrors: {}, error: message }, { status })
     }
     return data({ step: 'reset' as Step, email, fieldErrors: {}, error: null })
   }
@@ -102,17 +76,8 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     await UsersApi(sdk).createUserReset_v3({ emailAddress: email, code: values.code, newPassword: values.password })
   } catch (error) {
-    const { status, errorCode } = iamError(error)
-    const errors = resetFieldErrors(status, errorCode)
-    return data(
-      {
-        step: 'reset' as Step,
-        email,
-        fieldErrors: errors,
-        error: Object.keys(errors).length ? null : 'We could not reset your password. Please try again.'
-      },
-      { status: status || 502 }
-    )
+    const { status, message } = agsError(error)
+    return data({ step: 'reset' as Step, email, fieldErrors: {}, error: message }, { status })
   }
 
   // Sign the player in with the new password. If that can't finish here (2FA,

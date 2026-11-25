@@ -44,3 +44,14 @@ export function clientAuth() {
   const basic = Buffer.from(`${getEnv().agsClientId}:`).toString('base64')
   return { axiosConfig: { request: { headers: { Authorization: `Basic ${basic}` } } } }
 }
+
+/** What AGS answered to a failed SDK call: HTTP status, AGS error code and message. */
+export function agsError(error: unknown): { status: number; errorCode: number; message: string } {
+  const response = (error as { response?: { status?: number; data?: Record<string, unknown> } }).response
+  const body = response?.data ?? {}
+  return {
+    status: response?.status ?? 502,
+    errorCode: Number(body.errorCode ?? 0),
+    message: String(body.errorMessage ?? body.error_description ?? (error as Error).message ?? 'Unknown error')
+  }
+}
