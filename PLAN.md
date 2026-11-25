@@ -184,6 +184,8 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 | M5 | Redeem code, GDPR deletion and data download |
 | M6 | README, AGS setup script, deploy guides, security test pass, demo deployment, publish to GitHub |
 
+**Next (2026-11-26):** make responses readable for developers trying the sample. React Router returns loader and action data from `.data` requests as turbo-stream (a flat array with references by index), which can't be switched to JSON and is hard to read in the network tab. Goal: plain JSON in the browser's network tab, with no React DevTools needed. Likely route: resource routes that return `Response.json(...)`, with the pages calling them. Check first how React Router 8 sends a resource route's response to `useFetcher` and forms (as is, or wrapped in turbo-stream). Approach to be agreed first.
+
 ## 12. Notes from M0
 
 - IAM client `37ebc71cc6ef441983d474f81fa6e13a` (Public, no permissions) created in `bahlil` by `scripts/create-iam-client.sh` (replacing `0f1b91db4a614cc0875f9750621d9e12` in `bahlil-lahadalia`). Redirect URI `http://localhost:5173/auth/callback`. (A first, confidential client was deleted when the design moved to a public client.)
