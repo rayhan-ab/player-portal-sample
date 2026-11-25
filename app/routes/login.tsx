@@ -7,7 +7,7 @@ import { Field } from '~/components/ui/Field'
 import { PasswordField } from '~/components/ui/PasswordField'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
 import { getRegistrationConfig, getSocialPlatforms } from '~/server/iam-config.server'
-import { commitSession, readSession, safeReturnTo, setCookieHeaders, type PendingSignIn } from '~/server/session.server'
+import { clearSession, readSession, safeReturnTo, savePendingSignIn, setCookieHeaders, type PendingSignIn } from '~/server/session.server'
 import type { Route } from './+types/login'
 
 export const meta: Route.MetaFunction = () => [{ title: 'Sign in · Player Portal' }]
@@ -37,14 +37,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const returnTo = safeReturnTo(url.searchParams.get('returnTo'))
   if (getUser(context)) throw redirect(returnTo)
 
-  let pending = readSession(request)?.pendingSignIn
+  let pending = readSession(request).pendingSignIn
   const requestIdFromIam = url.searchParams.get('request_id')
   let headers: Headers | undefined
   if (requestIdFromIam && pending && !pending.requestId) {
     // Redirect flow: /auth/start sent the player to IAM, and IAM sent them here
     // with the request ID. Our state and PKCE verifier are already in the session.
     pending = { ...pending, requestId: requestIdFromIam }
-    headers = setCookieHeaders(commitSession(request, { pendingSignIn: pending }))
+    headers = setCookieHeaders(savePendingSignIn(pending))
   }
 
   const [{ usernameDisabled }, socialPlatforms] = await Promise.all([getRegistrationConfig(), getSocialPlatforms()])
@@ -54,7 +54,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       usernameDisabled,
       socialPlatforms,
       returnTo: url.searchParams.has('returnTo') ? returnTo : (pending?.returnTo ?? '/'),
-      error: errorKey ? (ERRORS[errorKey] ?? ERRORS.unknown) : null
+      error: errorKey ? (ERRORS[errorKey] ?? ERRORS.unknown) : null,
+      notice: url.searchParams.get('notice') === 'password-reset' ? 'Your password was changed. Sign in with your new password.' : null
     },
     { headers }
   )
@@ -78,9 +79,9 @@ export async function action({ request }: Route.ActionArgs) {
   // Reuse the request IAM sent the player here with (redirect flow) or one
   // from an earlier attempt; otherwise start one now.
   const pending =
-    usablePending(readSession(request)?.pendingSignIn) ?? (await beginSignIn(safeReturnTo(String(form.get('returnTo') ?? '/'))))
+    usablePending(readSession(request).pendingSignIn) ?? (await beginSignIn(safeReturnTo(String(form.get('returnTo') ?? '/'))))
 
-  const result = await signInWithPassword(request, pending, loginId, password)
+  const result = await signInWithPassword(pending, loginId, password)
   if (result instanceof Response) return result
   // Keep the request for a retry, unless IAM no longer knows it.
   const keep = result.errorKey !== 'expired'
@@ -88,7 +89,7 @@ export async function action({ request }: Route.ActionArgs) {
     { error: ERRORS[result.errorKey] ?? ERRORS.unknown, loginId },
     {
       status: result.errorKey === 'credentials' ? 401 : 400,
-      headers: setCookieHeaders(commitSession(request, keep ? { pendingSignIn: pending } : {}))
+      headers: setCookieHeaders(keep ? savePendingSignIn(pending) : clearSession())
     }
   )
 }
@@ -102,6 +103,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
   return (
     <AuthLayout title="Sign in" intro="Use your game account.">
       {error ? <Callout tone="error">{error}</Callout> : null}
+      {!error && loaderData.notice ? <Callout tone="success">{loaderData.notice}</Callout> : null}
       <SocialSignIn platforms={loaderData.socialPlatforms} returnTo={loaderData.returnTo} />
       <Form method="post" className="grid gap-5" noValidate>
         <input type="hidden" name="returnTo" value={loaderData.returnTo} />
@@ -114,7 +116,12 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
           required
           autoFocus
         />
-        <PasswordField label="Password" name="password" autoComplete="current-password" required />
+        <div className="grid gap-2">
+          <PasswordField label="Password" name="password" autoComplete="current-password" required />
+          <Link to="/forgot-password" className="w-fit text-(length:--ab-font-size-14)">
+            Forgot password?
+          </Link>
+        </div>
         <Button type="submit" loading={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </Button>

@@ -1,6 +1,6 @@
 # Player Portal Sample — Plan
 
-Status: M0 done, 2026-11-24. Owner: Rayhan.
+Status: M2 done, 2026-11-25. Owner: Rayhan.
 Origin: Slack thread with William Wu (#C0CAB50EHB3, 2026-11-24).
 
 ## 1. Goal
@@ -43,7 +43,7 @@ Scope is William's Slack list and nothing more; Phil asked for "a few key, frequ
 - **Login queue** at sign-in. Same: a clear "try again" message.
 - **Legal agreements** at registration.
 
-Forgot/reset password stays: it isn't on William's list, but every login website has it.
+Forgot/reset password stays: it isn't on William's list, but every login website has it. IAM emails a code and a link to `<login website URL>reset-password?code=…&email=…` (`justice-iam-service` `pkg/account/api/usercommonhandlers.go:384`); the sample serves that page at `/login/reset-password`, and players can also type the code on `/forgot-password`.
 
 ### Later
 
@@ -65,7 +65,7 @@ Browser ──(HttpOnly session cookie)──▶ Sample app server (loaders/acti
 ```
 
 - **AGS SDK:** the official TypeScript SDK, used on the server only: `@accelbyte/sdk` 4.3.4, `@accelbyte/sdk-iam` 6.3.7, `@accelbyte/sdk-platform` 6.3.7, `@accelbyte/sdk-gdpr` 5.3.7, `@accelbyte/sdk-basic` 6.2.9 (latest on npm, 2026-11-24). Fall back to plain `fetch` only where the SDK gets in the way of server-side use. Prove this in M0.
-- **Session:** the tokens go in an HttpOnly cookie as they are (no encryption, no secret), split across a few cookies if they exceed 4 KB. Page scripts never read them. Encrypting would not stop a stolen cookie being replayed, and IAM sets its own token cookies the same way. The server treats the cookie as browser input: AGS validates the token, `returnTo` is checked against open redirects, and no user ID is stored beside the token. No store, so it runs on any host, serverless included. Trade-off: a session can't be killed server-side, only by revoking its tokens at IAM (sign-out does this).
+- **Session:** the tokens go in HttpOnly cookies as they are (no encryption, no secret): `session_access` (expires a minute before the token, so its absence triggers a refresh), `session_refresh`, and `session_signin` for a sign-in in progress. One token per cookie keeps each under 4 KB. Page scripts never read them. Encrypting would not stop a stolen cookie being replayed, and IAM sets its own token cookies the same way. The server treats the cookie as browser input: AGS validates the token, `returnTo` is checked against open redirects, and no user ID is stored beside the token. No store, so it runs on any host, serverless included. Trade-off: a session can't be killed server-side, only by revoking its tokens at IAM (sign-out does this).
 - **IAM client:** Public, no secret. The tokens never leave the server, so a confidential client added little, and a public one removes the leaked-secret and admin-permission risks.
 - **No browser → AGS calls.** Everything goes through loaders and actions. So no CORS setup is needed on the namespace, and IAM's Referer check never triggers.
 
@@ -81,7 +81,7 @@ Browser ──(HttpOnly session cookie)──▶ Sample app server (loaders/acti
 
 1. **Sign in (authorization code + PKCE, public client)**
    One `/login` page acts as a real Login Website and has two ways in. Both end in the same form and action:
-   1. **Redirect from IAM (the primary flow, the Login Website role).** `/auth/start` creates the `state` and PKCE verifier, stores them in a short-lived pre-session, and redirects the browser to `GET /iam/v3/oauth/authorize`. IAM redirects to the studio's login website, which is our `/login?request_id=…`, and the page uses that `request_id`. This needs the studio's custom login website URL set to `https://<host>/login`, which is not in prod yet.
+   1. **Redirect from IAM (the primary flow, the Login Website role).** `/auth/start` creates the `state` and PKCE verifier, stores them in a short-lived pre-session, and redirects the browser to `GET /iam/v3/oauth/authorize`. IAM redirects to the studio's login website, which is our `/login?request_id=…`, and the page uses that `request_id`. This needs the studio's custom login website URL set to `https://<host>/login/`, which is not in prod yet. The trailing slash matters: IAM appends `reset-password` to it for the reset email link.
    2. **No `request_id` in the URL (fallback, needed in prod today).** If a player opens `/login` directly, or IAM is still sending browsers to the AccelByte login site, the `/login` loader starts the authorize request from the server. It creates `state` + PKCE the same way, calls `GET /iam/v3/oauth/authorize` without following the redirect, and takes the `request_id` from the `Location` header.
    3. The `/login` action posts the credentials to IAM `POST /iam/v3/authenticate` (with `request_id`), from the server, and reads `code` from IAM's redirect. A 2FA or login-queue answer becomes an error message (both are cut from v1).
    4. `/auth/callback` checks `state`, exchanges `code` + verifier at `/iam/v3/oauth/token`, stores the tokens, sets the cookie and redirects into the portal.
@@ -94,11 +94,11 @@ Exact endpoints, request shapes and SDK method names get confirmed against the A
 
 ## 6. Security checklist (acceptance criteria)
 
-- [ ] Session cookie `__Host-session`: `HttpOnly; Secure; SameSite=Lax; Path=/`. Contents validated on read; `returnTo` passes `safeReturnTo()`.
+- [ ] Session cookies `session_*`: `HttpOnly; Secure; SameSite=Lax; Path=/`. Contents validated on read; `returnTo` passes `safeReturnTo()`.
 - [ ] No AGS token in the HTML, JS, `localStorage`, `sessionStorage` or loader data sent to the browser. Add a test that greps rendered output for JWT patterns.
 - [ ] `state` and PKCE are checked on callback. `redirect_uri` is exact-match registered on the IAM client.
-- [ ] CSRF: every mutating action checks `Origin`/`Sec-Fetch-Site`, on top of `SameSite=Lax`.
-- [ ] Security headers: CSP (no inline script except hashed hydration data), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`.
+- [ ] CSRF: React Router rejects posts whose `Origin` doesn't match (400), on top of `SameSite=Lax`.
+- [ ] Security headers: HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY`. No CSP, to keep the sample simple (decided 2026-11-25).
 - [ ] No `VITE_`-prefixed variables that hold anything sensitive.
 - [ ] The IAM client has player-level permissions only. The README warns against admin permissions.
 - [ ] Concurrent refreshes don't revoke each other (see Refresh).
@@ -156,7 +156,7 @@ player-portal-sample/
 2. An IAM **public** client:
    - Redirect URI: `https://<host>/auth/callback`.
    - Player-level permissions for the features in use.
-3. The studio's custom login website URL set to `https://<host>/login`, once that's available in prod. It enables the redirect flow. Until then, the sample uses its fallback.
+3. The studio's custom login website URL set to `https://<host>/login/` (with the trailing slash, see section 3), once that's available in prod. It enables the redirect flow. Until then, the sample uses its fallback.
 4. Third-party platform credentials (Google, etc.) configured in the namespace for social login and linking, set up for **web login**, not the game-client setup. For Google, the Admin Portal's default in a game namespace is the game-client setup (Redirect URI `http://127.0.0.1`), which fails here with `redirect_uri_mismatch`. Instead:
    - In AGS, set the Google Redirect URI to `<IAM base URL>/iam/v3/platforms/google/authenticate`. IAM builds that address from its own base URL, which has no studio label (e.g. `https://internal.gamingservices.accelbyte.io/...`).
    - In Google Cloud Console, add that address under Authorized redirect URIs, plus `<IAM base URL>/iam/v3/public/namespaces/<namespace>/users/me/platforms/google/web/link/establish` and `.../web/reauth/establish` for linking. Keep any existing entries, such as `http://127.0.0.1`, so other apps on the same Google client still work.
@@ -177,8 +177,8 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 | # | Deliverable |
 |---|---|
 | M0 | Scaffold (React Router v8, Tailwind v4, tokens), env config, AGS TS SDK proven server-side, HttpOnly cookie session, security headers. **Done 2026-11-24.** |
-| M1 | Sign in / sign out end to end (authorize → `/login` → callback → portal), refresh with lock |
-| M2 | Registration with email verification, forgot/reset password |
+| M1 | Sign in / sign out end to end (authorize → `/login` → callback → portal), refresh with lock. **Done.** |
+| M2 | Registration with email verification, forgot/reset password. **Done 2026-11-25.** |
 | M3 | Social login + account linking/unlinking (headless accounts can't unlink), headless account upgrade |
 | M4 | Account management (profile, password, email) |
 | M5 | Redeem code, GDPR deletion and data download |
@@ -189,9 +189,8 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 - IAM client `37ebc71cc6ef441983d474f81fa6e13a` (Public, no permissions) created in `bahlil` by `scripts/create-iam-client.sh` (replacing `0f1b91db4a614cc0875f9750621d9e12` in `bahlil-lahadalia`). Redirect URI `http://localhost:5173/auth/callback`. (A first, confidential client was deleted when the design moved to a public client.)
 - IAM validates the client ID as a UUIDv4 without hyphens.
 - `npm run check:ags` confirms `/oauth/authorize` with PKCE answers 302 with a `request_id`, read without following the redirect. That is the fallback flow in section 4. It currently redirects to the AccelByte login site, because the studio's custom login website URL isn't set yet (set it in M1).
-- **Check in M1:** IAM's revoke endpoint asks for Basic auth from the client that issued the token; `clientAuth()` sends `clientId:` with an empty password. Measure a real player token's size for the cookie budget.
-- React Router 8 rejects document action requests whose `Origin` doesn't match the request URL (400) before middleware runs. The root middleware's `Sec-Fetch-Site`/`Origin` check (403) stays as the second layer and also covers requests with no `Origin`.
-- CSP uses a per-response nonce (root middleware → router context → `entry.server.tsx`). Enforced in production builds only, since Vite dev injects inline scripts.
+- **Check in M1:** IAM's revoke endpoint asks for Basic auth from the client that issued the token; `clientAuth()` sends `clientId:` with an empty password.
+- React Router 8 rejects document action requests whose `Origin` doesn't match the request URL (400) before middleware runs. That is the CSRF check.
 - `@accelbyte/sdk` adds no interceptors by default, so a fresh instance per request with `setToken()` is clean.
 
 ## 13. Open questions

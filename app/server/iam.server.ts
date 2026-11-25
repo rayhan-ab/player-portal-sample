@@ -1,14 +1,16 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { OAuth20Api } from '@accelbyte/sdk-iam'
+import { clientAuth, createAgsSdk } from './ags.server'
 import { getEnv, getRedirectUri } from './env.server'
 import type { AuthTokens } from './session.server'
 
 /**
  * The OAuth part of IAM: authorize, authenticate, token, revoke.
  *
- * These are plain `fetch` calls rather than SDK calls on purpose. In OAuth the
+ * Most are plain `fetch` calls rather than SDK calls on purpose. In OAuth the
  * status code and the redirect *are* the answer (302 with a code or an error),
- * and redirects must be read, not followed. Everything else in the app goes
- * through the SDK (ags.server.ts).
+ * and redirects must be read, not followed. Refresh has no redirect, so it
+ * uses the SDK like the rest of the app (ags.server.ts).
  */
 
 /** What IAM answers when asked for a token. */
@@ -127,13 +129,25 @@ export function exchangeCode(code: string, codeVerifier: string): Promise<TokenO
 
 // ── Session upkeep ───────────────────────────────────────────────────────
 
-/** Get new tokens with a refresh token. IAM revokes the old refresh token. */
-export function refreshTokens(refreshToken: string): Promise<TokenOutcome> {
-  return tokenRequest('/iam/v3/oauth/token', {
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-    client_id: getEnv().agsClientId
-  })
+/** Get new tokens with a refresh token, or null. IAM revokes the old refresh token. */
+export async function refreshTokens(refreshToken: string): Promise<AuthTokens | null> {
+  try {
+    const { data } = await OAuth20Api(createAgsSdk(), clientAuth()).postOauthToken_v3({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: getEnv().agsClientId
+    })
+    if (!data.refresh_token) return null
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresIn: data.expires_in,
+      refreshExpiresIn: data.refresh_expires_in ?? 0
+    }
+  } catch {
+    // Expired or revoked refresh token, or IAM unreachable: signed out.
+    return null
+  }
 }
 
 /** Revoke a token at IAM. Best effort: sign-out continues if this fails. */
@@ -152,14 +166,13 @@ async function tokenRequest(path: string, form: Record<string, string>): Promise
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>
 
   if (response.status === 200 && typeof body.access_token === 'string' && typeof body.refresh_token === 'string') {
-    const now = Date.now()
     return {
       kind: 'tokens',
       tokens: {
         accessToken: body.access_token,
         refreshToken: body.refresh_token,
-        accessExpiresAt: now + Number(body.expires_in ?? 0) * 1000,
-        refreshExpiresAt: now + Number(body.refresh_expires_in ?? 0) * 1000
+        expiresIn: Number(body.expires_in ?? 0),
+        refreshExpiresIn: Number(body.refresh_expires_in ?? 0)
       }
     }
   }

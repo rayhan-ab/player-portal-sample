@@ -1,6 +1,6 @@
 import { redirect } from 'react-router'
 import { authorizeUrl, createPkce } from '~/server/iam.server'
-import { commitSession, safeReturnTo, setCookieHeaders } from '~/server/session.server'
+import { safeReturnTo, savePendingSignIn, setCookieHeaders } from '~/server/session.server'
 import type { Route } from './+types/auth.start'
 
 /**
@@ -12,6 +12,6 @@ import type { Route } from './+types/auth.start'
 export async function loader({ request }: Route.LoaderArgs) {
   const returnTo = safeReturnTo(new URL(request.url).searchParams.get('returnTo'))
   const { state, codeVerifier, codeChallenge } = createPkce()
-  const cookies = commitSession(request, { pendingSignIn: { state, codeVerifier, returnTo, createdAt: Date.now() } })
+  const cookies = savePendingSignIn({ state, codeVerifier, returnTo, createdAt: Date.now() })
   return redirect(authorizeUrl(state, codeChallenge).toString(), { headers: setCookieHeaders(cookies) })
 }

@@ -1,27 +1,18 @@
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
 import type { Route } from './+types/root'
-import { nonceRouterContext, useNonce } from './nonce'
 import { authContext, loadAuth } from './server/auth.server'
 import { getEnv } from './server/env.server'
-import { applySecurityHeaders, createNonce, isCrossSiteMutation } from './server/security.server'
+import { applySecurityHeaders } from './server/security.server'
 import { setsSessionCookie } from './server/session.server'
 import './styles/app.css'
 
 /**
- * Runs for every document and data request: rejects cross-site form posts,
- * loads the signed-in player (refreshing their tokens when due), then adds the
- * security headers to whatever the route returns.
+ * Runs for every document and data request: loads the signed-in player
+ * (refreshing their tokens when due), then adds the security headers to
+ * whatever the route returns.
  */
 export const middleware: Route.MiddlewareFunction[] = [
   async ({ request, context }, next) => {
-    const env = getEnv()
-    if (isCrossSiteMutation(request, env.appUrl.origin)) {
-      return new Response('Cross-site request rejected.', { status: 403 })
-    }
-
-    const nonce = createNonce()
-    context.set(nonceRouterContext, nonce)
-
     const auth = await loadAuth(request)
     context.set(authContext, auth)
 
@@ -30,11 +21,7 @@ export const middleware: Route.MiddlewareFunction[] = [
     if (auth.setCookies.length > 0 && !setsSessionCookie(response.headers)) {
       for (const cookie of auth.setCookies) response.headers.append('Set-Cookie', cookie)
     }
-    applySecurityHeaders(response.headers, {
-      nonce,
-      isHttps: env.isHttps,
-      isDev: import.meta.env.DEV
-    })
+    applySecurityHeaders(response.headers, getEnv().isHttps)
     return response
   }
 ]
@@ -51,19 +38,18 @@ export const links: Route.LinksFunction = () => [
 ]
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const nonce = useNonce()
   return (
     <html lang="en" data-ab-theme="dark">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
-        <Links nonce={nonce} />
+        <Links />
       </head>
       <body>
         {children}
-        <ScrollRestoration nonce={nonce} />
-        <Scripts nonce={nonce} />
+        <ScrollRestoration />
+        <Scripts />
       </body>
     </html>
   )

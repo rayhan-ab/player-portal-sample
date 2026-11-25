@@ -2,7 +2,7 @@ import { redirect } from 'react-router'
 import { beginSignIn, getUser } from '~/server/auth.server'
 import { isSocialPlatform } from '~/server/iam-config.server'
 import { platformAuthorizeUrl } from '~/server/iam.server'
-import { commitSession, readSession, safeReturnTo, setCookieHeaders } from '~/server/session.server'
+import { readSession, safeReturnTo, savePendingSignIn, setCookieHeaders } from '~/server/session.server'
 import type { Route } from './+types/auth.platform'
 
 /**
@@ -15,13 +15,13 @@ import type { Route } from './+types/auth.platform'
  */
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const url = new URL(request.url)
-  const pendingReturnTo = readSession(request)?.pendingSignIn?.returnTo
+  const pendingReturnTo = readSession(request).pendingSignIn?.returnTo
   const returnTo = safeReturnTo(url.searchParams.get('returnTo') ?? pendingReturnTo)
   if (getUser(context)) throw redirect(returnTo)
   if (!(await isSocialPlatform(params.platformId))) throw redirect('/login?error=unknown')
 
   const pending = await beginSignIn(returnTo)
   return redirect(platformAuthorizeUrl(params.platformId, pending.requestId).toString(), {
-    headers: setCookieHeaders(commitSession(request, { pendingSignIn: pending }))
+    headers: setCookieHeaders(savePendingSignIn(pending))
   })
 }

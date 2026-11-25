@@ -5,10 +5,9 @@ process.env.AGS_BASE_URL = 'https://example.gamingservices.accelbyte.io'
 process.env.AGS_NAMESPACE = 'test'
 process.env.AGS_CLIENT_ID = 'client'
 
-const { readSession, commitSession, destroySession, safeReturnTo } = await import('./session.server')
+const { readSession, saveTokens, savePendingSignIn, clearSession, safeReturnTo } = await import('./session.server')
 
 const url = 'https://portal.example.com/'
-const blank = () => new Request(url)
 
 /** A request carrying the cookies from Set-Cookie values. */
 function requestWith(setCookies: string[]): Request {
@@ -16,58 +15,42 @@ function requestWith(setCookies: string[]): Request {
   return new Request(url, { headers: { Cookie: pairs.join('; ') } })
 }
 
-const tokens = (size = 100) => ({
-  accessToken: 'a'.repeat(size),
-  refreshToken: 'r'.repeat(size),
-  accessExpiresAt: Date.now() + 3600_000,
-  refreshExpiresAt: Date.now() + 86_400_000
-})
+const tokens = { accessToken: 'access', refreshToken: 'refresh', expiresIn: 3600, refreshExpiresIn: 86_400 }
 
 describe('sessions', () => {
-  it('sets a __Host- cookie that is HttpOnly, Secure and SameSite=Lax', () => {
-    const [cookie] = commitSession(blank(), { tokens: tokens() })
-    expect(cookie).toMatch(/^__Host-session=[A-Za-z0-9_-]+; /)
-    expect(cookie).toContain('HttpOnly')
-    expect(cookie).toContain('Secure')
-    expect(cookie).toContain('SameSite=Lax')
-    expect(cookie).toContain('Path=/')
-    expect(cookie).not.toContain('Domain')
+  it('sets HttpOnly, Secure, SameSite=Lax cookies', () => {
+    for (const cookie of saveTokens(tokens)) {
+      expect(cookie).toMatch(/^session_/)
+      expect(cookie).toContain('HttpOnly')
+      expect(cookie).toContain('Secure')
+      expect(cookie).toContain('SameSite=Lax')
+      expect(cookie).toContain('Path=/')
+    }
   })
 
-  it('round-trips the session', () => {
-    const cookies = commitSession(blank(), { tokens: tokens() })
-    expect(readSession(requestWith(cookies))?.tokens?.accessToken).toBe('a'.repeat(100))
+  it('expires the access cookie a minute before the token', () => {
+    expect(saveTokens(tokens)[0]).toContain('Max-Age=3540')
   })
 
-  it('splits a large session across cookies and reads it back', () => {
-    const cookies = commitSession(blank(), { tokens: tokens(4000) })
-    expect(cookies.length).toBeGreaterThan(1)
-    expect(cookies.every(c => c.split(';')[0]!.length < 4000)).toBe(true)
-    expect(readSession(requestWith(cookies))?.tokens?.accessToken).toHaveLength(4000)
+  it('round-trips tokens and a pending sign-in', () => {
+    const session = readSession(requestWith(saveTokens(tokens)))
+    expect(session.accessToken).toBe('access')
+    expect(session.refreshToken).toBe('refresh')
+    const pending = { state: 's', codeVerifier: 'v', returnTo: '/account', createdAt: Date.now() }
+    expect(readSession(requestWith(savePendingSignIn(pending))).pendingSignIn).toEqual(pending)
   })
 
-  it('clears leftover chunks when the session shrinks', () => {
-    const big = commitSession(blank(), { tokens: tokens(4000) })
-    const small = commitSession(requestWith(big), { tokens: tokens() })
-    expect(small.filter(c => c.includes('Max-Age=0')).length).toBe(big.length - 1)
-  })
-
-  it('ignores garbage and malformed sessions', () => {
-    const cookie = (value: string) => new Request(url, { headers: { Cookie: `__Host-session=${value}` } })
+  it('ignores a malformed or expired pending sign-in', () => {
+    const cookie = (value: string) => new Request(url, { headers: { Cookie: `session_signin=${value}` } })
     const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
-    expect(readSession(cookie('garbage'))).toBeNull()
-    expect(readSession(cookie(encode({ tokens: { accessToken: 1 } })))).toBeNull()
-    expect(readSession(cookie(encode({ admin: true })))).toBeNull()
+    expect(readSession(cookie('garbage')).pendingSignIn).toBeUndefined()
+    expect(readSession(cookie(encode({ state: 1 }))).pendingSignIn).toBeUndefined()
+    const old = { state: 's', codeVerifier: 'v', returnTo: '/', createdAt: Date.now() - 60 * 60 * 1000 }
+    expect(readSession(cookie(encode(old))).pendingSignIn).toBeUndefined()
   })
 
-  it('drops expired sessions', () => {
-    const expired = { ...tokens(), refreshExpiresAt: Date.now() - 1 }
-    expect(readSession(requestWith(commitSession(blank(), { tokens: expired })))).toBeNull()
-  })
-
-  it('clears the cookie on destroy', () => {
-    const cookies = commitSession(blank(), { tokens: tokens() })
-    expect(destroySession(requestWith(cookies))[0]).toContain('Max-Age=0')
+  it('clears every cookie on sign-out', () => {
+    expect(clearSession().every(c => c.includes('Max-Age=0'))).toBe(true)
   })
 })
 

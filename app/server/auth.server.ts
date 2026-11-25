@@ -1,6 +1,14 @@
 import { createContext, redirect, type RouterContextProvider } from 'react-router'
 import { authenticate, createPkce, exchangeCode, refreshTokens, requestAuthorization, type TokenOutcome } from './iam.server'
-import { commitSession, readSession, safeReturnTo, setCookieHeaders, type AuthTokens, type PendingSignIn } from './session.server'
+import {
+  clearSession,
+  readSession,
+  safeReturnTo,
+  saveTokens,
+  setCookieHeaders,
+  type AuthTokens,
+  type PendingSignIn
+} from './session.server'
 
 /**
  * Who is signed in, for loaders and actions.
@@ -25,8 +33,6 @@ type AuthState = {
 
 export const authContext = createContext<AuthState>({ user: null, setCookies: [] })
 
-/** Refresh this long before the access token expires. */
-const REFRESH_MARGIN_MS = 60_000
 /** How long a refresh result is reused for requests still carrying the old cookie. */
 const REFRESH_REUSE_MS = 30_000
 
@@ -43,8 +49,6 @@ function refreshOnce(refreshToken: string): Promise<AuthTokens | null> {
   let pending = refreshes.get(refreshToken)
   if (!pending) {
     pending = refreshTokens(refreshToken)
-      .then(outcome => (outcome.kind === 'tokens' ? outcome.tokens : null))
-      .catch(() => null)
     refreshes.set(refreshToken, pending)
     const forget = () => setTimeout(() => refreshes.delete(refreshToken), REFRESH_REUSE_MS).unref?.()
     pending.then(forget, forget)
@@ -65,21 +69,18 @@ function userFromToken(accessToken: string): SignedInUser | null {
 
 /** Run by the root middleware for every request. */
 export async function loadAuth(request: Request): Promise<AuthState> {
-  const session = readSession(request)
-  let tokens = session?.tokens
-  if (!tokens) return { user: null, setCookies: [] }
+  const { accessToken, refreshToken } = readSession(request)
+  if (accessToken) return { user: userFromToken(accessToken), setCookies: [] }
+  if (!refreshToken) return { user: null, setCookies: [] }
 
-  const setCookies: string[] = []
-  if (tokens.accessExpiresAt - REFRESH_MARGIN_MS <= Date.now()) {
-    const refreshed = await refreshOnce(tokens.refreshToken)
-    if (!refreshed) {
-      // Refresh token expired or revoked: the player is signed out.
-      return { user: null, setCookies: commitSession(request, {}) }
-    }
-    tokens = refreshed
-    setCookies.push(...commitSession(request, { tokens }))
+  // The access cookie expires a minute before the token does, so its absence
+  // means it's time to refresh.
+  const refreshed = await refreshOnce(refreshToken)
+  if (!refreshed) {
+    // Refresh token expired or revoked: the player is signed out.
+    return { user: null, setCookies: clearSession() }
   }
-  return { user: userFromToken(tokens.accessToken), setCookies }
+  return { user: userFromToken(refreshed.accessToken), setCookies: saveTokens(refreshed) }
 }
 
 export function getUser(context: Readonly<RouterContextProvider>): SignedInUser | null {
@@ -104,11 +105,11 @@ export function signInHref(returnTo: string): string {
  * signed in, or show an error.
  * Returns a redirect carrying the updated session cookie.
  */
-export function continueSignIn(request: Request, pending: PendingSignIn, outcome: TokenOutcome): Response {
+export function continueSignIn(pending: PendingSignIn, outcome: TokenOutcome): Response {
   switch (outcome.kind) {
     case 'tokens':
-      // Signed in. The pending sign-in is dropped with the rest of the old session.
-      return redirect(safeReturnTo(pending.returnTo), { headers: setCookieHeaders(commitSession(request, { tokens: outcome.tokens })) })
+      // Signed in. Saving the tokens also clears the pending sign-in.
+      return redirect(safeReturnTo(pending.returnTo), { headers: setCookieHeaders(saveTokens(outcome.tokens)) })
     case 'error':
       return redirect(`/login?error=${encodeURIComponent(signInErrorKey(outcome.error, outcome.description))}`)
   }
@@ -148,7 +149,6 @@ export async function beginSignIn(returnTo: string): Promise<PendingSignIn & { r
  * the next step. Returns a redirect, or an error key for the page to show.
  */
 export async function signInWithPassword(
-  request: Request,
   pending: PendingSignIn,
   loginId: string,
   password: string
@@ -157,5 +157,5 @@ export async function signInWithPassword(
   const result = await authenticate({ loginId, password, requestId: pending.requestId })
   if (result.kind === 'error') return { errorKey: signInErrorKey(result.error, result.description) }
   if (result.state !== pending.state) return { errorKey: 'state' }
-  return continueSignIn(request, pending, await exchangeCode(result.code, pending.codeVerifier))
+  return continueSignIn(pending, await exchangeCode(result.code, pending.codeVerifier))
 }

@@ -1,5 +1,5 @@
 import { UsersApi, UsersV4Api } from '@accelbyte/sdk-iam'
-import { useState, type FocusEvent, type FormEvent } from 'react'
+import { useState, type FocusEvent, type SubmitEvent } from 'react'
 import { data, Form, Link, redirect, useNavigation } from 'react-router'
 import { AuthLayout } from '~/components/AuthLayout'
 import { SocialSignIn } from '~/components/SocialSignIn'
@@ -163,7 +163,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // 5. Sign the new player in.
-  const signIn = await signInWithPassword(request, await beginSignIn('/account'), values.email, values.password)
+  const signIn = await signInWithPassword(await beginSignIn('/account'), values.email, values.password)
   if (signIn instanceof Response) return signIn
   throw redirect('/login?returnTo=/account')
 }
@@ -183,12 +183,15 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
     setClientErrors(current => ({ ...current, [key]: message ?? undefined }))
   }
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     if (verifying) return
     const found = checkValues(readValues(new FormData(event.currentTarget)), rules, config.usernameDisabled)
     setClientErrors(found)
     if (Object.keys(found).length > 0) event.preventDefault()
   }
+
+  let submitLabel = verifying ? 'Verify and create account' : 'Create account'
+  if (busy) submitLabel = 'Creating your account…'
 
   const passwordHelp = rules.password?.hints.length ? (
     <ul className="m-0 grid gap-1 pl-4">
@@ -280,7 +283,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
         ) : null}
 
         <Button type="submit" loading={busy}>
-          {busy ? 'Creating your account…' : verifying ? 'Verify and create account' : 'Create account'}
+          {submitLabel}
         </Button>
       </Form>
 

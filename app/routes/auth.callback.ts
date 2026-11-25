@@ -7,7 +7,7 @@ import type { Route } from './+types/auth.callback'
 /** IAM sends the browser here with an authorization code (or an error). */
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url)
-  const pending = readSession(request)?.pendingSignIn
+  const pending = readSession(request).pendingSignIn
   const error = url.searchParams.get('error')
   if (error) throw redirect(`/login?error=${signInErrorKey(error, url.searchParams.get('error_description') ?? '')}`)
 
@@ -17,5 +17,5 @@ export async function loader({ request }: Route.LoaderArgs) {
   // belong to someone else's sign-in (login CSRF).
   if (!pending || !code || !state || state !== pending.state) throw redirect('/login?error=state')
 
-  return continueSignIn(request, pending, await exchangeCode(code, pending.codeVerifier))
+  return continueSignIn(pending, await exchangeCode(code, pending.codeVerifier))
 }
