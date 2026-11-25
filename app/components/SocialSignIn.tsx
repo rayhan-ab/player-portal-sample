@@ -1,33 +1,7 @@
-import {
-  AmazonLogoIcon,
-  DiscordLogoIcon,
-  FacebookLogoIcon,
-  GameControllerIcon,
-  MetaLogoIcon,
-  SnapchatLogoIcon,
-  SteamLogoIcon,
-  TwitchLogoIcon,
-  WindowsLogoIcon,
-  type Icon
-} from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { WEB_LOGIN_PLATFORMS, type WebLoginPlatform } from '~/lib/platforms'
+import { PlatformLogo } from './PlatformLogo'
 import { buttonClass, Spinner } from './ui/Button'
-
-const LOGOS: Partial<Record<WebLoginPlatform, string>> = {
-  google: '/icons/google.svg'
-}
-
-const ICONS: Partial<Record<WebLoginPlatform, Icon>> = {
-  discord: DiscordLogoIcon,
-  steamopenid: SteamLogoIcon,
-  twitch: TwitchLogoIcon,
-  facebook: FacebookLogoIcon,
-  amazon: AmazonLogoIcon,
-  snapchat: SnapchatLogoIcon,
-  oculusweb: MetaLogoIcon,
-  azure: WindowsLogoIcon
-}
 
 /**
  * "Continue with …" buttons for the namespace's active platforms. Plain links
@@ -55,8 +29,6 @@ export function SocialSignIn({ platforms, returnTo }: { platforms: WebLoginPlatf
     <div className="grid gap-5">
       <div className="grid gap-3" aria-busy={pending !== null}>
         {platforms.map(id => {
-          const logo = LOGOS[id]
-          const PlatformIcon = ICONS[id] ?? GameControllerIcon
           const isPending = pending === id
           return (
             <a
@@ -69,13 +41,7 @@ export function SocialSignIn({ platforms, returnTo }: { platforms: WebLoginPlatf
                 else setPending(id)
               }}
             >
-              {isPending ? (
-                <Spinner size={20} />
-              ) : logo ? (
-                <img src={logo} alt="" width={20} height={20} />
-              ) : (
-                <PlatformIcon aria-hidden size={20} weight="bold" />
-              )}
+              {isPending ? <Spinner size={20} /> : <PlatformLogo platformId={id} />}
               {isPending ? `Going to ${WEB_LOGIN_PLATFORMS[id]}…` : `Continue with ${WEB_LOGIN_PLATFORMS[id]}`}
             </a>
           )

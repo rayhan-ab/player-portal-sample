@@ -1,4 +1,4 @@
-import { index, route, type RouteConfig } from '@react-router/dev/routes'
+import { index, layout, route, type RouteConfig } from '@react-router/dev/routes'
 
 export default [
   index('routes/home.tsx'),
@@ -8,7 +8,8 @@ export default [
   route('login/reset-password', 'routes/forgot-password.tsx', { id: 'reset-password' }),
   route('register', 'routes/register.tsx'),
   route('forgot-password', 'routes/forgot-password.tsx'),
-  route('account', 'routes/account.tsx'),
+  layout('routes/account-layout.tsx', [route('account', 'routes/account.tsx'), route('account/linked-accounts', 'routes/linked.tsx')]),
+  route('upgrade', 'routes/upgrade.tsx'),
   route('auth/start', 'routes/auth.start.ts'),
   route('auth/callback', 'routes/auth.callback.ts'),
   route('auth/platform/:platformId', 'routes/auth.platform.ts'),

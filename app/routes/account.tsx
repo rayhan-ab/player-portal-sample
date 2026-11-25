@@ -6,7 +6,7 @@ import { Callout } from '~/components/ui/Callout'
 import { Card, CardTitle } from '~/components/ui/Card'
 import { Field } from '~/components/ui/Field'
 import { useSubmitting } from '~/lib/pending'
-import { createAgsSdk } from '~/server/ags.server'
+import { agsError, createAgsSdk } from '~/server/ags.server'
 import { getUser, requireUser, signInHref, type SignedInUser } from '~/server/auth.server'
 import { getCountries } from '~/server/iam-config.server'
 import { getLinkedPlatformName } from '~/server/player.server'
@@ -69,7 +69,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     } catch (error) {
       // 409: already verified. The page reloads and shows that.
       if (statusOf(error) === 409) return data({ result: 'verified' as const, error: null })
-      return data({ result: null, error: 'We could not send a code. Try again in a minute.' }, { status: 502 })
+      const { status, message } = agsError(error)
+      return data({ result: null, error: message }, { status })
     }
     return data({ result: 'sent' as const, error: null })
   }
@@ -81,29 +82,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     await users.createUserMeCodeVerify_v3({ code, contactType: 'email', languageTag: 'en-US' })
   } catch (error) {
-    const status = statusOf(error)
-    if (status && status < 500)
-      return data({ result: null, error: 'That code is not right or has expired. Send a new one.' }, { status: 400 })
-    return data({ result: null, error: 'We could not check the code. Try again in a minute.' }, { status: 502 })
+    const { status, message } = agsError(error)
+    return data({ result: null, error: message }, { status })
   }
   return data({ result: 'verified' as const, error: null })
 }
 
 export default function Account({ loaderData, actionData }: Route.ComponentProps) {
-  const signingOut = useSubmitting({ action: '/logout' })
   const { profile } = loaderData
   return (
-    <main className="mx-auto grid w-full max-w-(--ab-width-content) gap-8 px-(--ab-gutter) py-12">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="m-0 text-(length:--ab-font-size-40)">Your account</h1>
-        {profile ? (
-          <Form method="post" action="/logout">
-            <Button type="submit" variant="secondary" size="sm" loading={signingOut}>
-              Sign out
-            </Button>
-          </Form>
-        ) : null}
-      </header>
+    <>
+      <h1 className="m-0 text-(length:--ab-font-size-32)">Profile</h1>
 
       {profile ? (
         <Card>
@@ -126,7 +115,10 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
                   </dl>
                   {actionData?.result === 'verified' ? <Callout tone="success">Your email is verified.</Callout> : null}
                   {profile.email ? null : (
-                    <Callout tone="info">This account has no email or password yet. You sign in with a linked platform.</Callout>
+                    <Callout tone="info">
+                      This account has no email or password yet. You sign in with a linked platform.{' '}
+                      <a href="/upgrade">Add an email and password</a>
+                    </Callout>
                   )}
                   {!profile.email || profile.emailVerified ? null : (
                     <VerifyEmail email={profile.email} result={actionData?.result ?? null} error={actionData?.error ?? null} />
@@ -148,7 +140,7 @@ export default function Account({ loaderData, actionData }: Route.ComponentProps
           </div>
         </Card>
       )}
-    </main>
+    </>
   )
 }
 
