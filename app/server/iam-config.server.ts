@@ -1,5 +1,4 @@
 import { CountryApi, InputValidationsApi, ThirdPartyCredentialApi } from '@accelbyte/sdk-iam'
-import { PoliciesApi } from '@accelbyte/sdk-legal'
 import { isWebLoginPlatform, WEB_LOGIN_PLATFORMS, type WebLoginPlatform } from '~/lib/platforms'
 import type { FieldName, FieldRule, ValidationRules } from '~/lib/validation'
 import { createAgsSdk } from './ags.server'
@@ -20,15 +19,6 @@ export type RegistrationConfig = {
 }
 
 export type Country = { code: string; name: string }
-
-export type LegalPolicy = {
-  policyId: string
-  policyVersionId: string
-  localizedPolicyVersionId: string
-  name: string
-  url: string | null
-  mandatory: boolean
-}
 
 const TTL_MS = 5 * 60 * 1000
 const cache = new Map<string, { value: Promise<unknown>; expiresAt: number }>()
@@ -102,31 +92,6 @@ export function getCountries(): Promise<Country[]> {
   return cached('countries', async () => {
     const { data } = await CountryApi(createAgsSdk()).getCountries_v3()
     return data.map(({ code, name }) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name))
-  })
-}
-
-/** Legal documents a player in this country must accept to register. */
-export function getRegistrationPolicies(countryCode: string): Promise<LegalPolicy[]> {
-  return cached(`policies:${countryCode}`, async () => {
-    const { data } = await PoliciesApi(createAgsSdk()).getPolicyCountry_ByCountryCode_ByNS(countryCode, {
-      policyType: 'LEGAL_DOCUMENT_TYPE',
-      alwaysIncludeDefault: true
-    })
-    const policies: LegalPolicy[] = []
-    for (const policy of data) {
-      const version = policy.policyVersions?.find(v => v.isInEffect)
-      const localized = version?.localizedPolicyVersions?.find(l => l.isDefaultSelection) ?? version?.localizedPolicyVersions?.[0]
-      if (!version || !localized) continue
-      policies.push({
-        policyId: policy.id,
-        policyVersionId: version.id,
-        localizedPolicyVersionId: localized.id,
-        name: policy.policyName,
-        url: localized.attachmentLocation ?? null,
-        mandatory: policy.isMandatory
-      })
-    }
-    return policies
   })
 }
 

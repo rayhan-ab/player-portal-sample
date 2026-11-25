@@ -35,11 +35,15 @@ Non-goals: replacing the existing `justice-playerportal-website` or `justice-log
 | Redeem code | Redeem a code and show what was granted |
 | GDPR | Request account deletion (and cancel it), request a personal data download |
 
-### Must handle even in v1 (or login breaks for some players)
+### Cut from v1 (decided 2026-11-25)
 
-- **MFA challenge** during sign-in, if the namespace has MFA enabled.
-- **Login queue** ticket during sign-in, if the namespace has a login queue enabled.
-- **Legal agreements** (terms and privacy policy) to accept at registration and when they change.
+Scope is William's Slack list and nothing more; Phil asked for "a few key, frequently used flows and not the kitchen sink". So these are cut, and listed in the README as not covered:
+
+- **2FA challenge** at sign-in. A namespace with 2FA on gets a clear error message instead.
+- **Login queue** at sign-in. Same: a clear "try again" message.
+- **Legal agreements** at registration.
+
+Forgot/reset password stays: it isn't on William's list, but every login website has it.
 
 ### Later
 
@@ -56,11 +60,11 @@ Browser ──(HttpOnly session cookie)──▶ Sample app server (loaders/acti
                                               │  cookie holds { access, refresh, expiry }
                                               │  public IAM client, auth code + PKCE run by the server
                                               ▼
-                                            AGS (IAM, Platform, GDPR, Basic, Legal)
+                                            AGS (IAM, Platform, GDPR, Basic)
                                             calls carry Authorization: Bearer <access token>
 ```
 
-- **AGS SDK:** the official TypeScript SDK, used on the server only: `@accelbyte/sdk` 4.3.4, `@accelbyte/sdk-iam` 6.3.7, `@accelbyte/sdk-platform` 6.3.7, `@accelbyte/sdk-gdpr` 5.3.7, `@accelbyte/sdk-basic` 6.2.9, `@accelbyte/sdk-legal` 6.3.7 (latest on npm, 2026-11-24). Fall back to plain `fetch` only where the SDK gets in the way of server-side use. Prove this in M0.
+- **AGS SDK:** the official TypeScript SDK, used on the server only: `@accelbyte/sdk` 4.3.4, `@accelbyte/sdk-iam` 6.3.7, `@accelbyte/sdk-platform` 6.3.7, `@accelbyte/sdk-gdpr` 5.3.7, `@accelbyte/sdk-basic` 6.2.9 (latest on npm, 2026-11-24). Fall back to plain `fetch` only where the SDK gets in the way of server-side use. Prove this in M0.
 - **Session:** the tokens go in an HttpOnly cookie as they are (no encryption, no secret), split across a few cookies if they exceed 4 KB. Page scripts never read them. Encrypting would not stop a stolen cookie being replayed, and IAM sets its own token cookies the same way. The server treats the cookie as browser input: AGS validates the token, `returnTo` is checked against open redirects, and no user ID is stored beside the token. No store, so it runs on any host, serverless included. Trade-off: a session can't be killed server-side, only by revoking its tokens at IAM (sign-out does this).
 - **IAM client:** Public, no secret. The tokens never leave the server, so a confidential client added little, and a public one removes the leaked-secret and admin-permission risks.
 - **No browser → AGS calls.** Everything goes through loaders and actions. So no CORS setup is needed on the namespace, and IAM's Referer check never triggers.
@@ -79,14 +83,14 @@ Browser ──(HttpOnly session cookie)──▶ Sample app server (loaders/acti
    One `/login` page acts as a real Login Website and has two ways in. Both end in the same form and action:
    1. **Redirect from IAM (the primary flow, the Login Website role).** `/auth/start` creates the `state` and PKCE verifier, stores them in a short-lived pre-session, and redirects the browser to `GET /iam/v3/oauth/authorize`. IAM redirects to the studio's login website, which is our `/login?request_id=…`, and the page uses that `request_id`. This needs the studio's custom login website URL set to `https://<host>/login`, which is not in prod yet.
    2. **No `request_id` in the URL (fallback, needed in prod today).** If a player opens `/login` directly, or IAM is still sending browsers to the AccelByte login site, the `/login` loader starts the authorize request from the server. It creates `state` + PKCE the same way, calls `GET /iam/v3/oauth/authorize` without following the redirect, and takes the `request_id` from the `Location` header.
-   3. The `/login` action posts the credentials to IAM `POST /iam/v3/authenticate` (with `request_id`), from the server, and reads `code` from IAM's redirect. It handles MFA and login-queue responses on the way.
+   3. The `/login` action posts the credentials to IAM `POST /iam/v3/authenticate` (with `request_id`), from the server, and reads `code` from IAM's redirect. A 2FA or login-queue answer becomes an error message (both are cut from v1).
    4. `/auth/callback` checks `state`, exchanges `code` + verifier at `/iam/v3/oauth/token`, stores the tokens, sets the cookie and redirects into the portal.
 2. **Social login:** `/login` offers the platform buttons and sends the browser to IAM `GET /iam/v3/oauth/platforms/{platformId}/authorize?request_id=…`. IAM handles the platform callback and returns to `/auth/callback` with a code. "Not linked" and "create account" outcomes go to the register or link screens. **Verify in M3:** some of these outcomes may redirect to the login website, which is the AccelByte login site in prod today. If so, use the platform token grant from the server for those platforms instead (as type-so-fast does for Google). Decided 2026-11-24: Google also goes through IAM's redirect, like every other platform, because that's how a Login Website normally works. The ID-token flow type-so-fast uses is not the default (see section 9 for the setup it needs instead).
-3. **Registration:** a server action creates the user (IAM v4 public users), runs email verification by code, records legal acceptance, then signs the player in.
+3. **Registration:** a server action creates the user (IAM v4 public users), runs email verification by code, then signs the player in.
 4. **Refresh:** done on the server, in the root middleware, so each request refreshes at most once (React Router's single fetch sends one request per navigation). Replace both tokens and treat a failed refresh as signed out. IAM revokes a used refresh token, so two parallel requests both refreshing would sign the player out: refresh a little before expiry, and keep an in-process lock keyed by refresh token for same-instance races.
 5. **Sign out:** revoke the token at IAM (`/iam/v3/oauth/revoke`), delete the session and clear the cookie.
 
-Exact endpoints, request shapes and SDK method names get confirmed against the AGS API docs and the SDK in M0/M1. IAM has the needed routes (authorize, authenticate, token, revoke, platform authorize/link/unlink, headless upgrade, `users/me`, password, MFA verify), but this plan doesn't depend on their exact paths.
+Exact endpoints, request shapes and SDK method names get confirmed against the AGS API docs and the SDK in M0/M1. IAM has the needed routes (authorize, authenticate, token, revoke, platform authorize/link/unlink, headless upgrade, `users/me`, password), but this plan doesn't depend on their exact paths.
 
 ## 6. Security checklist (acceptance criteria)
 
@@ -157,7 +161,7 @@ player-portal-sample/
    - In AGS, set the Google Redirect URI to `<IAM base URL>/iam/v3/platforms/google/authenticate`. IAM builds that address from its own base URL, which has no studio label (e.g. `https://internal.gamingservices.accelbyte.io/...`).
    - In Google Cloud Console, add that address under Authorized redirect URIs, plus `<IAM base URL>/iam/v3/public/namespaces/<namespace>/users/me/platforms/google/web/link/establish` and `.../web/reauth/establish` for linking. Keep any existing entries, such as `http://127.0.0.1`, so other apps on the same Google client still work.
    - One namespace stores one Redirect URI per platform, so a game-client Google sign-in that relies on `127.0.0.1` can't share the namespace. A web app that uses Google's ID-token sign-in (like type-so-fast) is unaffected, since that flow never uses the Redirect URI.
-5. Optional, per feature: redeem code campaigns (Platform), legal documents (Legal), GDPR configuration.
+5. Optional, per feature: redeem code campaigns (Platform), GDPR configuration.
 
 An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 where the CLI supports them.
 
@@ -173,8 +177,8 @@ An AGS CLI script (or step-by-step commands) in `scripts/` sets up steps 2–4 w
 | # | Deliverable |
 |---|---|
 | M0 | Scaffold (React Router v8, Tailwind v4, tokens), env config, AGS TS SDK proven server-side, HttpOnly cookie session, security headers. **Done 2026-11-24.** |
-| M1 | Sign in / sign out end to end (authorize → `/login` → callback → portal), refresh with lock, MFA + login queue handling |
-| M2 | Registration with email verification + legal acceptance, forgot/reset password |
+| M1 | Sign in / sign out end to end (authorize → `/login` → callback → portal), refresh with lock |
+| M2 | Registration with email verification, forgot/reset password |
 | M3 | Social login + account linking/unlinking (headless accounts can't unlink), headless account upgrade |
 | M4 | Account management (profile, password, email) |
 | M5 | Redeem code, GDPR deletion and data download |

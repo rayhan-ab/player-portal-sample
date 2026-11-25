@@ -1,5 +1,4 @@
 import { getEnv } from './env.server'
-import type { MfaChallenge, QueueTicket } from './iam.server'
 
 /**
  * Sessions, kept in an HttpOnly cookie. No database, no Redis, no secret.
@@ -32,10 +31,6 @@ export type PendingSignIn = {
   createdAt: number
   /** IAM authorization request the sign-in form posts against. */
   requestId?: string
-  /** Set when IAM asked for a 2FA code. */
-  mfa?: MfaChallenge
-  /** Set when the player is waiting in the login queue. */
-  queue?: QueueTicket
 }
 
 export type SessionData = {
@@ -107,20 +102,9 @@ function parse(value: unknown): SessionData | null {
     typeof pendingSignIn.createdAt === 'number' &&
     pendingSignIn.createdAt + PENDING_TTL_MS > Date.now()
   ) {
-    const { state, codeVerifier, returnTo, createdAt, requestId, mfa, queue } = pendingSignIn as PendingSignIn
+    const { state, codeVerifier, returnTo, createdAt, requestId } = pendingSignIn as PendingSignIn
     data.pendingSignIn = { state, codeVerifier, returnTo, createdAt }
     if (isString(requestId)) data.pendingSignIn.requestId = requestId
-    if (mfa && isString(mfa.mfaToken) && Array.isArray(mfa.factors) && typeof mfa.defaultFactor === 'string') {
-      data.pendingSignIn.mfa = { mfaToken: mfa.mfaToken, factors: mfa.factors.map(String), defaultFactor: mfa.defaultFactor }
-    }
-    if (queue && isString(queue.ticket)) {
-      data.pendingSignIn.queue = {
-        ticket: queue.ticket,
-        position: Number(queue.position) || 0,
-        estimatedWaitingTimeInSeconds: Number(queue.estimatedWaitingTimeInSeconds) || 0,
-        playerPollingTimeInSeconds: Math.max(2, Number(queue.playerPollingTimeInSeconds) || 5)
-      }
-    }
   }
   return data.tokens || data.pendingSignIn ? data : null
 }

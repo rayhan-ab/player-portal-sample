@@ -11,14 +11,7 @@ import { SelectField } from '~/components/ui/SelectField'
 import { validateField, type FieldName, type ValidationRules } from '~/lib/validation'
 import { clientAuth, createAgsSdk } from '~/server/ags.server'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
-import {
-  getCountries,
-  getRegistrationConfig,
-  getRegistrationPolicies,
-  getSocialPlatforms,
-  getValidationRules,
-  isAvailable
-} from '~/server/iam-config.server'
+import { getCountries, getRegistrationConfig, getSocialPlatforms, getValidationRules, isAvailable } from '~/server/iam-config.server'
 import type { Route } from './+types/register'
 
 export const meta: Route.MetaFunction = () => [{ title: 'Create an account · Player Portal' }]
@@ -30,7 +23,6 @@ type Values = {
   password: string
   country: string
   dateOfBirth: string
-  acceptPolicies: boolean
   code: string
 }
 
@@ -54,8 +46,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     request,
     countries.map(c => c.code)
   )
-  const policies = await getRegistrationPolicies(defaultCountry)
-  return { config, rules, countries, defaultCountry, policies, socialPlatforms }
+  return { config, rules, countries, defaultCountry, socialPlatforms }
 }
 
 function readValues(form: FormData): Values {
@@ -67,7 +58,6 @@ function readValues(form: FormData): Values {
     password: String(form.get('password') ?? ''),
     country: text('country'),
     dateOfBirth: text('dateOfBirth'),
-    acceptPolicies: form.get('acceptPolicies') === 'on',
     code: text('code').replace(/\s+/g, '')
   }
 }
@@ -85,7 +75,7 @@ function ageOf(dateOfBirth: string): number | null {
 }
 
 /** Every check that needs no network call. Runs in the browser and on the server. */
-function checkValues(values: Values, rules: ValidationRules, usernameDisabled: boolean, needsPolicies: boolean): FieldErrors {
+function checkValues(values: Values, rules: ValidationRules, usernameDisabled: boolean): FieldErrors {
   const errors: FieldErrors = {}
   const check = (field: FieldName, key: keyof Values) => {
     const message = validateField(field, String(values[key]), rules)
@@ -98,7 +88,6 @@ function checkValues(values: Values, rules: ValidationRules, usernameDisabled: b
   if (!values.country) errors.country = 'Choose your country.'
   const age = ageOf(values.dateOfBirth)
   if (age === null || age < 0 || age > 120) errors.dateOfBirth = 'Enter your date of birth.'
-  if (needsPolicies && !values.acceptPolicies) errors.acceptPolicies = 'You need to accept these to create an account.'
   return errors
 }
 
@@ -119,11 +108,9 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData()
   const values = readValues(form)
   const [config, rules] = await Promise.all([getRegistrationConfig(), getValidationRules()])
-  const policies = values.country ? await getRegistrationPolicies(values.country) : []
-  const mandatoryPolicies = policies.filter(p => p.mandatory)
 
   // 1. Same checks as the browser, because the browser can't be trusted.
-  const fieldErrors = checkValues(values, rules, config.usernameDisabled, mandatoryPolicies.length > 0)
+  const fieldErrors = checkValues(values, rules, config.usernameDisabled)
   if (Object.keys(fieldErrors).length > 0) return data({ fieldErrors, step: 'details' as const, error: null }, { status: 400 })
 
   // 2. Taken usernames and display names.
@@ -163,15 +150,7 @@ export async function action({ request }: Route.ActionArgs) {
       country: values.country,
       dateOfBirth: values.dateOfBirth,
       reachMinimumAge: true,
-      ...(values.code ? { code: values.code } : {}),
-      acceptedPolicies: values.acceptPolicies
-        ? policies.map(p => ({
-            policyId: p.policyId,
-            policyVersionId: p.policyVersionId,
-            localizedPolicyVersionId: p.localizedPolicyVersionId,
-            isAccepted: true
-          }))
-        : []
+      ...(values.code ? { code: values.code } : {})
     })
   } catch (error) {
     const body = (error as { response?: { data?: { errorCode?: number; errorMessage?: string } } }).response?.data
@@ -190,12 +169,11 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Register({ loaderData, actionData }: Route.ComponentProps) {
-  const { config, rules, countries, defaultCountry, policies, socialPlatforms } = loaderData
+  const { config, rules, countries, defaultCountry, socialPlatforms } = loaderData
   const navigation = useNavigation()
   const busy = navigation.state !== 'idle' && navigation.formMethod === 'POST'
   const [clientErrors, setClientErrors] = useState<FieldErrors>({})
   const verifying = actionData?.step === 'verify'
-  const mandatoryPolicies = policies.filter(p => p.mandatory)
 
   // Server errors win until the player edits that field again.
   const errors: FieldErrors = { ...actionData?.fieldErrors, ...clientErrors }
@@ -207,7 +185,7 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (verifying) return
-    const found = checkValues(readValues(new FormData(event.currentTarget)), rules, config.usernameDisabled, mandatoryPolicies.length > 0)
+    const found = checkValues(readValues(new FormData(event.currentTarget)), rules, config.usernameDisabled)
     setClientErrors(found)
     if (Object.keys(found).length > 0) event.preventDefault()
   }
@@ -286,31 +264,6 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
             ))}
           </SelectField>
           <Field label="Date of birth" name="dateOfBirth" type="date" autoComplete="bday" required error={errors.dateOfBirth} />
-
-          {policies.length > 0 ? (
-            <div className="grid gap-2">
-              <label className="flex items-start gap-2 text-(length:--ab-font-size-14) text-secondary">
-                <input type="checkbox" name="acceptPolicies" className="mt-1 accent-(--ab-color-action)" />
-                <span>
-                  I agree to the{' '}
-                  {policies.map((p, i) => (
-                    <span key={p.policyId}>
-                      {i > 0 ? (i === policies.length - 1 ? ' and ' : ', ') : null}
-                      {p.url ? (
-                        <a href={p.url} target="_blank" rel="noreferrer">
-                          {p.name}
-                        </a>
-                      ) : (
-                        p.name
-                      )}
-                    </span>
-                  ))}
-                  .
-                </span>
-              </label>
-              {errors.acceptPolicies ? <p className="m-0 text-(length:--ab-font-size-12) text-danger">{errors.acceptPolicies}</p> : null}
-            </div>
-          ) : null}
         </div>
 
         {verifying ? (

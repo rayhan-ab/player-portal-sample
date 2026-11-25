@@ -19,6 +19,8 @@ const ERRORS: Record<string, string> = {
   disabled: 'This account is disabled or scheduled for deletion.',
   expired: 'Your sign-in took too long. Please try again.',
   country: 'Signing in is not available in your country.',
+  mfa: 'This account uses two-factor authentication, which this sample does not support.',
+  queue: 'Too many players are signing in right now. Try again in a few minutes.',
   state: 'Sign-in could not be verified. Please try again.',
   unknown: 'Something went wrong signing you in. Please try again.'
 }
@@ -60,7 +62,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 /** A pending sign-in the form can still post against, if there is one. */
 function usablePending(pending: PendingSignIn | undefined): (PendingSignIn & { requestId: string }) | null {
-  if (!pending?.requestId || pending.mfa || pending.queue) return null
+  if (!pending?.requestId) return null
   if (pending.createdAt + REQUEST_REUSE_MS < Date.now()) return null
   return { ...pending, requestId: pending.requestId }
 }

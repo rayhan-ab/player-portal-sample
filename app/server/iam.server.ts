@@ -1,38 +1,18 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { LoginQueueTicketResponse, MFADataResponse } from '@accelbyte/sdk-iam'
 import { getEnv, getRedirectUri } from './env.server'
 import type { AuthTokens } from './session.server'
 
 /**
- * The OAuth part of IAM: authorize, authenticate, token, 2FA, login queue, revoke.
+ * The OAuth part of IAM: authorize, authenticate, token, revoke.
  *
  * These are plain `fetch` calls rather than SDK calls on purpose. In OAuth the
- * status code and the redirect *are* the answer (302 with a code, 401 with
- * `mfa_required`, 202 with a queue ticket), and redirects must be read, not
- * followed. Everything else in the app goes through the SDK (ags.server.ts).
- * Response bodies are still checked with the SDK's schemas.
+ * status code and the redirect *are* the answer (302 with a code or an error),
+ * and redirects must be read, not followed. Everything else in the app goes
+ * through the SDK (ags.server.ts).
  */
 
-export type MfaChallenge = {
-  mfaToken: string
-  /** Factors the player has set up: `authenticator`, `backupCode`, `email`. */
-  factors: string[]
-  defaultFactor: string
-}
-
-export type QueueTicket = {
-  ticket: string
-  position: number
-  estimatedWaitingTimeInSeconds: number
-  playerPollingTimeInSeconds: number
-}
-
 /** What IAM answers when asked for a token. */
-export type TokenOutcome =
-  | { kind: 'tokens'; tokens: AuthTokens }
-  | { kind: 'mfa'; challenge: MfaChallenge }
-  | { kind: 'queue'; ticket: QueueTicket }
-  | { kind: 'error'; error: string; description: string }
+export type TokenOutcome = { kind: 'tokens'; tokens: AuthTokens } | { kind: 'error'; error: string; description: string }
 
 /** What IAM answers when a player submits the sign-in form. */
 export type AuthenticateOutcome = { kind: 'code'; code: string; state: string } | { kind: 'error'; error: string; description: string }
@@ -134,7 +114,7 @@ export async function authenticate(input: { loginId: string; password: string; r
   }
 }
 
-/** Exchange an authorization code for tokens (or a 2FA challenge, or a queue ticket). */
+/** Exchange an authorization code for tokens */
 export function exchangeCode(code: string, codeVerifier: string): Promise<TokenOutcome> {
   return tokenRequest('/iam/v4/oauth/token', {
     grant_type: 'authorization_code',
@@ -143,41 +123,6 @@ export function exchangeCode(code: string, codeVerifier: string): Promise<TokenO
     redirect_uri: getRedirectUri(),
     client_id: getEnv().agsClientId
   })
-}
-
-/** Finish a 2FA challenge with the code the player entered. */
-export function verifyMfa(input: { mfaToken: string; factor: string; code: string }): Promise<TokenOutcome> {
-  return tokenRequest('/iam/v4/oauth/mfa/verify', {
-    mfaToken: input.mfaToken,
-    factor: input.factor,
-    code: input.code,
-    rememberDevice: 'false'
-  })
-}
-
-/** Email a 2FA code to the player (IAM already sends one when email is the default factor). */
-export async function sendMfaEmailCode(mfaToken: string): Promise<boolean> {
-  const response = await postForm('/iam/v3/oauth/mfa/code', { clientId: getEnv().agsClientId, factor: 'email', mfaToken })
-  return response.ok
-}
-
-/** Swap a login queue ticket that has reached the front for tokens. */
-export function redeemQueueTicket(ticket: string, codeVerifier: string): Promise<TokenOutcome> {
-  return tokenRequest('/iam/v4/oauth/token', {
-    grant_type: 'urn:ietf:params:oauth:grant-type:login_queue_ticket',
-    login_queue_ticket: ticket,
-    code_verifier: codeVerifier,
-    client_id: getEnv().agsClientId
-  })
-}
-
-/** Ask the login queue where a ticket stands. Null if the ticket is gone. */
-export async function refreshQueueTicket(ticket: string): Promise<QueueTicket | null> {
-  const url = iamUrl(`/login-queue/v1/namespaces/${encodeURIComponent(getEnv().agsNamespace)}/ticket`)
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${ticket}` } })
-  if (!response.ok) return null
-  const status = QueueStatus.safeParse(await response.json().catch(() => null))
-  return status.success ? toQueueTicket({ ...status.data, ticket }) : null
 }
 
 // ── Session upkeep ───────────────────────────────────────────────────────
@@ -218,41 +163,14 @@ async function tokenRequest(path: string, form: Record<string, string>): Promise
       }
     }
   }
-  // v4 endpoints answer 202 with a ticket when the namespace's login queue is full.
-  const queued = response.status === 202 ? QueueTicketBody.safeParse(body) : null
-  if (queued?.success) return { kind: 'queue', ticket: toQueueTicket(queued.data) }
-  if (body.error === 'login_queue_enabled') {
-    const ticket = QueueTicketBody.safeParse(body.login_queue_ticket)
-    if (ticket.success) return { kind: 'queue', ticket: toQueueTicket(ticket.data) }
-  }
-  if (body.error === 'mfa_required') {
-    const mfa = MFADataResponse.safeParse(body)
-    if (mfa.success) {
-      const { mfa_token, factors, default_factor } = mfa.data
-      return { kind: 'mfa', challenge: { mfaToken: mfa_token, factors, defaultFactor: default_factor || (factors[0] ?? '') } }
-    }
+  // This sample doesn't handle the login queue or 2FA (see README). Both come
+  // back as errors the sign-in page explains.
+  if (response.status === 202 || body.error === 'login_queue_enabled') {
+    return { kind: 'error', error: 'login_queue', description: '' }
   }
   return {
     kind: 'error',
     error: String(body.error ?? body.errorCode ?? `http_${response.status}`),
     description: String(body.error_description ?? body.errorMessage ?? '')
-  }
-}
-
-/** The queue fields the app needs. The SDK schema also requires cancel/refresh links we don't use. */
-const QueueStatus = LoginQueueTicketResponse.pick({ position: true, estimatedWaitingTimeInSeconds: true, playerPollingTimeInSeconds: true })
-const QueueTicketBody = LoginQueueTicketResponse.pick({
-  ticket: true,
-  position: true,
-  estimatedWaitingTimeInSeconds: true,
-  playerPollingTimeInSeconds: true
-})
-
-function toQueueTicket(body: QueueTicket): QueueTicket {
-  return {
-    ticket: body.ticket,
-    position: body.position,
-    estimatedWaitingTimeInSeconds: body.estimatedWaitingTimeInSeconds,
-    playerPollingTimeInSeconds: Math.max(2, body.playerPollingTimeInSeconds)
   }
 }

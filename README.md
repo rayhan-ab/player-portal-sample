@@ -37,7 +37,19 @@ Requirements: Node 22.22 or later.
 | `npm run typecheck` | Generate route types and run TypeScript |
 | `npm test` | Unit tests |
 | `npm run check:ags` | Check IAM is reachable and accepts the client and redirect URI |
-| `npm run format` | Format with oxfmt (same settings as the Admin Portal) |
+| `npm run format` | Format with oxfmt |
+
+## Not covered
+
+This sample shows a few common flows, not every AGS feature. If your namespace
+turns these on, add them yourself:
+
+- **Two-factor authentication.** Players with 2FA on see "This account uses
+  two-factor authentication, which this sample does not support."
+- **Login queue.** When the queue is active, sign-in shows "Too many players are
+  signing in right now."
+- **Legal documents.** Registration doesn't ask players to accept terms or a
+  privacy policy.
 
 ## Security notes
 

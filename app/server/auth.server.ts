@@ -101,7 +101,7 @@ export function signInHref(returnTo: string): string {
 
 /**
  * Take the next step after IAM answered a token request during sign-in:
- * signed in, ask for a 2FA code, wait in the login queue, or show an error.
+ * signed in, or show an error.
  * Returns a redirect carrying the updated session cookie.
  */
 export function continueSignIn(request: Request, pending: PendingSignIn, outcome: TokenOutcome): Response {
@@ -109,14 +109,6 @@ export function continueSignIn(request: Request, pending: PendingSignIn, outcome
     case 'tokens':
       // Signed in. The pending sign-in is dropped with the rest of the old session.
       return redirect(safeReturnTo(pending.returnTo), { headers: setCookieHeaders(commitSession(request, { tokens: outcome.tokens })) })
-    case 'mfa':
-      return redirect('/login/2fa', {
-        headers: setCookieHeaders(commitSession(request, { pendingSignIn: { ...pending, mfa: outcome.challenge, queue: undefined } }))
-      })
-    case 'queue':
-      return redirect('/login/queue', {
-        headers: setCookieHeaders(commitSession(request, { pendingSignIn: { ...pending, queue: outcome.ticket, mfa: undefined } }))
-      })
     case 'error':
       return redirect(`/login?error=${encodeURIComponent(signInErrorKey(outcome.error, outcome.description))}`)
   }
@@ -125,6 +117,8 @@ export function continueSignIn(request: Request, pending: PendingSignIn, outcome
 /** Map an IAM error to one of the messages the sign-in page knows. */
 export function signInErrorKey(error: string, description: string): string {
   const text = `${error} ${description}`.toLowerCase()
+  if (text.includes('mfa_required')) return 'mfa'
+  if (text.includes('login_queue')) return 'queue'
   if (text.includes('invalid username or password') || text.includes('invalid_grant')) return 'credentials'
   if (text.includes('too many failed')) return 'locked'
   if (text.includes('banned')) return 'banned'
