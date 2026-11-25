@@ -2,6 +2,7 @@ import { UsersApi, UsersV4Api } from '@accelbyte/sdk-iam'
 import { useState, type FocusEvent, type FormEvent } from 'react'
 import { data, Form, Link, redirect, useNavigation } from 'react-router'
 import { AuthLayout } from '~/components/AuthLayout'
+import { SocialSignIn } from '~/components/SocialSignIn'
 import { Button } from '~/components/ui/Button'
 import { Callout } from '~/components/ui/Callout'
 import { Field } from '~/components/ui/Field'
@@ -10,7 +11,14 @@ import { SelectField } from '~/components/ui/SelectField'
 import { validateField, type FieldName, type ValidationRules } from '~/lib/validation'
 import { clientAuth, createAgsSdk } from '~/server/ags.server'
 import { beginSignIn, getUser, signInWithPassword } from '~/server/auth.server'
-import { getCountries, getRegistrationConfig, getRegistrationPolicies, getValidationRules, isAvailable } from '~/server/iam-config.server'
+import {
+  getCountries,
+  getRegistrationConfig,
+  getRegistrationPolicies,
+  getSocialPlatforms,
+  getValidationRules,
+  isAvailable
+} from '~/server/iam-config.server'
 import type { Route } from './+types/register'
 
 export const meta: Route.MetaFunction = () => [{ title: 'Create an account · Player Portal' }]
@@ -36,13 +44,18 @@ function countryFromLanguage(request: Request, codes: string[]): string {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (getUser(context)) throw redirect('/account')
-  const [config, rules, countries] = await Promise.all([getRegistrationConfig(), getValidationRules(), getCountries()])
+  const [config, rules, countries, socialPlatforms] = await Promise.all([
+    getRegistrationConfig(),
+    getValidationRules(),
+    getCountries(),
+    getSocialPlatforms()
+  ])
   const defaultCountry = countryFromLanguage(
     request,
     countries.map(c => c.code)
   )
   const policies = await getRegistrationPolicies(defaultCountry)
-  return { config, rules, countries, defaultCountry, policies }
+  return { config, rules, countries, defaultCountry, policies, socialPlatforms }
 }
 
 function readValues(form: FormData): Values {
@@ -177,7 +190,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Register({ loaderData, actionData }: Route.ComponentProps) {
-  const { config, rules, countries, defaultCountry, policies } = loaderData
+  const { config, rules, countries, defaultCountry, policies, socialPlatforms } = loaderData
   const navigation = useNavigation()
   const busy = navigation.state !== 'idle' && navigation.formMethod === 'POST'
   const [clientErrors, setClientErrors] = useState<FieldErrors>({})
@@ -213,6 +226,8 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
       intro={verifying ? 'We sent a verification code to your email. Enter it to finish.' : undefined}
     >
       {actionData?.error ? <Callout tone="error">{actionData.error}</Callout> : null}
+      {/* A first sign-in with a platform creates the account, so the same buttons work here. */}
+      {verifying ? null : <SocialSignIn platforms={socialPlatforms} returnTo="/account" />}
 
       <Form method="post" className="grid gap-5" noValidate onSubmit={onSubmit}>
         {/* The details stay in the form (hidden) while the code is entered, so they are sent again with it. */}
